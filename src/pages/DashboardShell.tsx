@@ -7,7 +7,6 @@ import {
   Settings,
   LogOut,
   MapPin,
-  CheckCircle2,
 } from 'lucide-react';
 import { StoreProfile, ActiveTab } from '../types';
 import { PosBilling } from './PosBilling';
@@ -49,44 +48,42 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
   const planName = localProfile?.plan_name || 'Launch Beta (All Modules)';
 
   return (
-    <div className="min-h-screen bg-[#070A11] text-slate-100 flex flex-col justify-between selection:bg-emerald-500/30 selection:text-emerald-300">
+    <div className="min-h-screen bg-[#F4F6F9] text-slate-800 flex flex-col justify-between selection:bg-indigo-500/20 selection:text-indigo-700">
       {/* ================= TOP NAVIGATION BAR ================= */}
-      <header className="border-b border-slate-800 bg-[#0B1120] sticky top-0 z-40 px-4 sm:px-6 py-3 shadow-xl">
+      <header className="border-b border-slate-200 bg-white sticky top-0 z-40 px-4 sm:px-6 py-3 shadow-sm">
         <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
           {/* Store Brand & Location */}
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-cyan-500 p-[1.5px] flex items-center justify-center shadow-glow-emerald">
-              <div className="w-full h-full bg-[#070A11] rounded-[10px] flex items-center justify-center">
-                <Store className="w-4 h-4 text-emerald-400" />
-              </div>
+            <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-700 shadow-sm">
+              <Store className="w-5 h-5 text-[#4338CA]" />
             </div>
 
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-sm sm:text-base font-black text-white tracking-tight leading-tight">
+                <h1 className="text-sm sm:text-base font-bold text-[#0F172A] tracking-tight leading-tight">
                   {businessName}
                 </h1>
-                <span className="hidden sm:inline-block text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono">
+                <span className="hidden sm:inline-block text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-teal-50 text-[#0D9488] border border-teal-200 font-mono">
                   {planName}
                 </span>
               </div>
-              <p className="text-[11px] text-slate-400 flex items-center gap-1.5 mt-0.5">
-                <MapPin className="w-3 h-3 text-cyan-400" />
+              <p className="text-[11px] text-slate-500 flex items-center gap-1.5 mt-0.5">
+                <MapPin className="w-3 h-3 text-slate-400" />
                 <span>{city}</span>
                 <span>•</span>
-                <span className="text-emerald-400 font-mono">nivopos.in</span>
+                <span className="text-[#0D9488] font-mono font-medium">nivopos.in</span>
               </p>
             </div>
           </div>
 
           {/* 4 Real Working Views Navigation */}
-          <nav className="flex items-center gap-1 sm:gap-1.5 bg-slate-950 p-1 rounded-2xl border border-slate-800">
+          <nav className="flex items-center gap-1 sm:gap-1.5 bg-slate-100 p-1 rounded-2xl border border-slate-200">
             <button
               onClick={() => setActiveTab('pos')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-colors ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
                 activeTab === 'pos'
-                  ? 'bg-emerald-500 text-slate-950 shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
+                  ? 'bg-white text-[#0D9488] shadow-sm border border-teal-200/80 font-bold'
+                  : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               <CreditCard className="w-3.5 h-3.5" />
@@ -95,10 +92,10 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
 
             <button
               onClick={() => setActiveTab('products')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-colors ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
                 activeTab === 'products'
-                  ? 'bg-emerald-500 text-slate-950 shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
+                  ? 'bg-white text-[#0D9488] shadow-sm border border-teal-200/80 font-bold'
+                  : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               <Package className="w-3.5 h-3.5" />
@@ -107,10 +104,10 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
 
             <button
               onClick={() => setActiveTab('sales')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-colors ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
                 activeTab === 'sales'
-                  ? 'bg-emerald-500 text-slate-950 shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
+                  ? 'bg-white text-[#0D9488] shadow-sm border border-teal-200/80 font-bold'
+                  : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               <History className="w-3.5 h-3.5" />
@@ -119,10 +116,10 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
 
             <button
               onClick={() => setActiveTab('settings')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-colors ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
                 activeTab === 'settings'
-                  ? 'bg-emerald-500 text-slate-950 shadow-sm'
-                  : 'text-slate-400 hover:text-slate-200'
+                  ? 'bg-white text-[#0D9488] shadow-sm border border-teal-200/80 font-bold'
+                  : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               <Settings className="w-3.5 h-3.5" />
@@ -134,7 +131,7 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
           <div className="flex items-center gap-2">
             <button
               onClick={() => onSignOut()}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-rose-950/40 border border-slate-800 hover:border-rose-800/60 text-xs text-slate-300 hover:text-rose-400 transition-colors"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-rose-50 border border-slate-200 hover:border-rose-200 text-xs text-slate-700 hover:text-rose-600 transition-colors shadow-sm"
               title="Sign Out"
             >
               <LogOut className="w-3.5 h-3.5" />
@@ -180,7 +177,7 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
       </main>
 
       {/* ================= FOOTER ================= */}
-      <footer className="border-t border-slate-900 py-3 text-center text-[11px] text-slate-600">
+      <footer className="border-t border-slate-200 bg-white py-3 text-center text-[11px] text-slate-500">
         Nivo POS • Module 3 (Counter POS Billing, Product Master & Sales History) • Multi-Tenant Active
       </footer>
     </div>

@@ -200,51 +200,51 @@ export const SalesHistory: React.FC<SalesHistoryProps> = ({
       {/* Real Top KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         {/* Card 1: Today's Revenue */}
-        <div className="p-5 rounded-2xl bg-slate-950 border border-slate-800 shadow-xl">
+        <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm">
           <div className="flex items-center justify-between">
-            <span className="text-xs uppercase font-bold text-slate-500">Today's Sales</span>
-            <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400">
+            <span className="text-xs uppercase font-semibold text-slate-500">Today's Sales</span>
+            <div className="p-2 rounded-xl bg-teal-50 text-[#0D9488]">
               <IndianRupee className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-2xl font-black text-white font-mono mt-2">
+          <div className="text-2xl font-bold text-[#0F172A] font-mono mt-2">
             ₹{todayRevenue.toLocaleString('en-IN')}
           </div>
-          <p className="text-[11px] text-emerald-400 font-medium mt-1">
+          <p className="text-[11px] text-[#0D9488] font-medium mt-1">
             Computed from real counter invoices
           </p>
         </div>
 
         {/* Card 2: Total Bills */}
-        <div className="p-5 rounded-2xl bg-slate-950 border border-slate-800 shadow-xl">
+        <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm">
           <div className="flex items-center justify-between">
-            <span className="text-xs uppercase font-bold text-slate-500">Total Bills Billed</span>
-            <div className="p-2 rounded-xl bg-cyan-500/10 text-cyan-400">
+            <span className="text-xs uppercase font-semibold text-slate-500">Total Bills Billed</span>
+            <div className="p-2 rounded-xl bg-indigo-50 text-[#4338CA]">
               <Receipt className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-2xl font-black text-white font-mono mt-2">
+          <div className="text-2xl font-bold text-[#0F172A] font-mono mt-2">
             {totalInvoicesCount}
           </div>
-          <p className="text-[11px] text-slate-400 font-medium mt-1">
+          <p className="text-[11px] text-slate-500 font-medium mt-1">
             Stored in public.invoices
           </p>
         </div>
 
         {/* Card 3: Payment Split */}
-        <div className="p-5 rounded-2xl bg-slate-950 border border-slate-800 shadow-xl">
+        <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm">
           <div className="flex items-center justify-between">
-            <span className="text-xs uppercase font-bold text-slate-500">UPI vs Cash Split</span>
-            <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400">
+            <span className="text-xs uppercase font-semibold text-slate-500">UPI vs Cash Split</span>
+            <div className="p-2 rounded-xl bg-teal-50 text-[#0D9488]">
               <QrCode className="w-4 h-4" />
             </div>
           </div>
           <div className="text-xs font-mono font-bold mt-2 space-y-0.5">
-            <div className="flex justify-between text-emerald-400">
+            <div className="flex justify-between text-[#0D9488]">
               <span>UPI:</span>
               <span>₹{paymentSplits.upi.toLocaleString('en-IN')}</span>
             </div>
-            <div className="flex justify-between text-slate-300">
+            <div className="flex justify-between text-slate-600">
               <span>Cash:</span>
               <span>₹{paymentSplits.cash.toLocaleString('en-IN')}</span>
             </div>
@@ -252,41 +252,41 @@ export const SalesHistory: React.FC<SalesHistoryProps> = ({
         </div>
 
         {/* Card 4: Total GST Collected */}
-        <div className="p-5 rounded-2xl bg-slate-950 border border-slate-800 shadow-xl">
+        <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm">
           <div className="flex items-center justify-between">
-            <span className="text-xs uppercase font-bold text-slate-500">Total GST Recorded</span>
-            <div className="p-2 rounded-xl bg-cyan-500/10 text-cyan-400">
+            <span className="text-xs uppercase font-semibold text-slate-500">Total GST Recorded</span>
+            <div className="p-2 rounded-xl bg-teal-50 text-[#0D9488]">
               <CheckCircle2 className="w-4 h-4" />
             </div>
           </div>
-          <div className="text-2xl font-black text-cyan-400 font-mono mt-2">
+          <div className="text-2xl font-bold text-[#0D9488] font-mono mt-2">
             ₹{Math.round(totalGstCollected).toLocaleString('en-IN')}
           </div>
-          <p className="text-[11px] text-slate-400 font-medium mt-1">
+          <p className="text-[11px] text-slate-500 font-medium mt-1">
             Auto GSTR-1 eligible
           </p>
         </div>
       </div>
 
       {/* Filter & Search Bar */}
-      <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-2xl bg-slate-950 border border-slate-800">
+      <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-2xl bg-white border border-slate-200 shadow-sm">
         <div className="relative w-full sm:w-80">
-          <Search className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
+          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search by Bill #, Customer Name, Mobile..."
-            className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-10 pr-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+            className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-3 py-2 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#4338CA] focus:bg-white"
           />
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="text-xs text-slate-400">Payment:</span>
+          <span className="text-xs text-slate-500">Payment:</span>
           <select
             value={paymentFilter}
             onChange={(e) => setPaymentFilter(e.target.value)}
-            className="bg-slate-900 border border-slate-800 text-xs text-white rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-500"
+            className="bg-slate-50 border border-slate-200 text-xs text-slate-800 rounded-xl px-3 py-2 focus:outline-none focus:border-[#4338CA] focus:bg-white"
           >
             <option value="all">All Modes</option>
             <option value="upi">UPI QR</option>
@@ -298,26 +298,26 @@ export const SalesHistory: React.FC<SalesHistoryProps> = ({
       </div>
 
       {/* Invoices List Table */}
-      <div className="rounded-2xl border border-slate-800 bg-slate-950/80 overflow-hidden shadow-2xl">
+      <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-sm">
         {loading ? (
           <div className="p-16 text-center text-slate-500 text-xs flex items-center justify-center gap-2">
-            <Loader2 className="w-4 h-4 animate-spin text-emerald-400" />
+            <Loader2 className="w-4 h-4 animate-spin text-[#4338CA]" />
             <span>Loading sales ledger...</span>
           </div>
         ) : invoices.length === 0 ? (
           <div className="p-16 text-center space-y-4">
-            <div className="w-14 h-14 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center text-slate-500 mx-auto">
+            <div className="w-14 h-14 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-[#4338CA] mx-auto">
               <Receipt className="w-7 h-7" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-white">No invoices billed yet</h3>
-              <p className="mt-1 text-xs text-slate-400 max-w-sm mx-auto leading-relaxed">
+              <h3 className="text-base font-bold text-[#0F172A]">No invoices billed yet</h3>
+              <p className="mt-1 text-xs text-slate-500 max-w-sm mx-auto leading-relaxed">
                 Bills generated from the Counter POS terminal will automatically appear here with real-time analytics.
               </p>
             </div>
             <button
               onClick={onNavigateToPos}
-              className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-cyan-500 text-slate-950 font-bold text-xs uppercase tracking-wider inline-flex items-center gap-2 shadow-glow-emerald"
+              className="px-5 py-2.5 rounded-xl bg-[#4338CA] hover:bg-[#3730A3] text-white font-bold text-xs uppercase tracking-wider inline-flex items-center gap-2 shadow-sm"
             >
               <span>Go to Counter POS & Bill</span>
             </button>
@@ -329,7 +329,7 @@ export const SalesHistory: React.FC<SalesHistoryProps> = ({
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs">
-              <thead className="bg-slate-900/90 text-slate-400 uppercase tracking-wider text-[10px] font-bold border-b border-slate-800">
+              <thead className="bg-slate-50 text-slate-600 uppercase tracking-wider text-[10px] font-semibold border-b border-slate-200">
                 <tr>
                   <th className="px-4 py-3">Invoice #</th>
                   <th className="px-4 py-3">Date & Time</th>
@@ -342,17 +342,17 @@ export const SalesHistory: React.FC<SalesHistoryProps> = ({
                   <th className="px-4 py-3 text-center">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/80">
+              <tbody className="divide-y divide-slate-100">
                 {filteredInvoices.map((inv) => (
                   <tr
                     key={inv.id}
-                    className="hover:bg-slate-900/40 transition-colors cursor-pointer"
+                    className="hover:bg-slate-50/80 transition-colors cursor-pointer"
                     onClick={() => handleSelectInvoice(inv)}
                   >
-                    <td className="px-4 py-3 font-mono font-bold text-emerald-400">
+                    <td className="px-4 py-3 font-mono font-bold text-[#4338CA]">
                       {inv.invoice_number}
                     </td>
-                    <td className="px-4 py-3 text-slate-300">
+                    <td className="px-4 py-3 text-slate-600">
                       {new Date(inv.created_at).toLocaleString('en-IN', {
                         day: 'numeric',
                         month: 'short',
@@ -361,29 +361,29 @@ export const SalesHistory: React.FC<SalesHistoryProps> = ({
                       })}
                     </td>
                     <td className="px-4 py-3">
-                      <p className="font-semibold text-white">{inv.customer_name || 'Counter Customer'}</p>
+                      <p className="font-semibold text-[#0F172A]">{inv.customer_name || 'Counter Customer'}</p>
                       {inv.customer_phone && (
-                        <p className="text-[10px] text-slate-400 font-mono">{inv.customer_phone}</p>
+                        <p className="text-[10px] text-slate-500 font-mono">{inv.customer_phone}</p>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-slate-300 font-medium">
+                    <td className="px-4 py-3 text-slate-700 font-medium">
                       {inv.payment_mode}
                     </td>
-                    <td className="px-4 py-3 text-right font-mono text-slate-400">
+                    <td className="px-4 py-3 text-right font-mono text-slate-500">
                       ₹{Number(inv.subtotal).toFixed(2)}
                     </td>
-                    <td className="px-4 py-3 text-right font-mono text-slate-400">
+                    <td className="px-4 py-3 text-right font-mono text-slate-500">
                       ₹{Number(inv.total_gst).toFixed(2)}
                     </td>
-                    <td className="px-4 py-3 text-right font-mono font-bold text-white text-sm">
+                    <td className="px-4 py-3 text-right font-mono font-bold text-[#0F172A] text-sm">
                       ₹{Number(inv.grand_total).toLocaleString('en-IN')}
                     </td>
                     <td className="px-4 py-3 text-center">
                       <span
                         className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
                           inv.status === 'paid'
-                            ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
-                            : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                            ? 'bg-teal-50 text-[#0D9488] border border-teal-200'
+                            : 'bg-amber-50 text-amber-700 border border-amber-200'
                         }`}
                       >
                         {inv.status}
@@ -395,7 +395,7 @@ export const SalesHistory: React.FC<SalesHistoryProps> = ({
                           e.stopPropagation();
                           handleSelectInvoice(inv);
                         }}
-                        className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs font-bold border border-slate-800"
+                        className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold border border-slate-200"
                       >
                         View / Print
                       </button>
@@ -410,8 +410,8 @@ export const SalesHistory: React.FC<SalesHistoryProps> = ({
 
       {/* ================= MODAL: VIEW INVOICE & REPRINT ================= */}
       {selectedInvoice && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md overflow-y-auto">
-          <div className="relative w-full max-w-md bg-white text-slate-900 rounded-3xl p-6 sm:p-8 shadow-2xl my-auto space-y-5">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm overflow-y-auto">
+          <div className="relative w-full max-w-md bg-white text-slate-900 rounded-3xl p-6 sm:p-8 shadow-2xl my-auto space-y-5 border border-slate-200">
             {/* Action Bar (Hidden during print) */}
             <div className="no-print flex items-center justify-between pb-3 border-b border-slate-200">
               <span className="text-xs font-bold text-slate-700">
@@ -501,7 +501,7 @@ export const SalesHistory: React.FC<SalesHistoryProps> = ({
                   <span>₹{Number(selectedInvoice.subtotal).toFixed(2)}</span>
                 </div>
                 {selectedInvoice.discount_amount > 0 && (
-                  <div className="flex justify-between text-emerald-700">
+                  <div className="flex justify-between text-[#0D9488]">
                     <span>Discount:</span>
                     <span>-₹{Number(selectedInvoice.discount_amount).toFixed(2)}</span>
                   </div>
@@ -527,7 +527,7 @@ export const SalesHistory: React.FC<SalesHistoryProps> = ({
               <div className="grid grid-cols-2 gap-2">
                 <button
                   onClick={() => window.print()}
-                  className="py-2.5 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-colors"
+                  className="py-2.5 px-3 rounded-xl bg-[#4338CA] hover:bg-[#3730A3] text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-colors"
                 >
                   <Printer className="w-4 h-4" />
                   <span>Print Receipt</span>
@@ -535,7 +535,7 @@ export const SalesHistory: React.FC<SalesHistoryProps> = ({
 
                 <button
                   onClick={handleShareWhatsApp}
-                  className="py-2.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-colors"
+                  className="py-2.5 px-3 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-colors"
                 >
                   <Share2 className="w-4 h-4" />
                   <span>WhatsApp Share</span>
@@ -546,7 +546,7 @@ export const SalesHistory: React.FC<SalesHistoryProps> = ({
                 <button
                   onClick={() => handleMarkAsPaid(selectedInvoice.id)}
                   disabled={markingPaid}
-                  className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-2"
+                  className="w-full py-2.5 rounded-xl bg-teal-700 hover:bg-teal-800 text-white font-bold text-xs flex items-center justify-center gap-2"
                 >
                   {markingPaid ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
@@ -559,7 +559,7 @@ export const SalesHistory: React.FC<SalesHistoryProps> = ({
 
               <button
                 onClick={() => setSelectedInvoice(null)}
-                className="w-full py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs transition-colors"
+                className="w-full py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors"
               >
                 Close
               </button>

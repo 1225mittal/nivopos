@@ -115,14 +115,14 @@ export const StoreSettings: React.FC<StoreSettingsProps> = ({
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       {/* Header */}
-      <div className="p-6 rounded-2xl bg-[#0B1120] border border-slate-800 shadow-xl">
+      <div className="p-6 rounded-2xl bg-white border border-slate-200 shadow-sm">
         <div className="flex items-center gap-3 mb-2">
-          <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
+          <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-[#4338CA]">
             <Store className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-xl font-black text-white">Store Setup & UPI Configuration</h2>
-            <p className="text-xs text-slate-400">
+            <h2 className="text-xl font-bold text-[#0F172A]">Store Setup & UPI Configuration</h2>
+            <p className="text-xs text-slate-500">
               Configure your store credentials, billing address, and merchant UPI ID for instant dynamic counter QR billing.
             </p>
           </div>
@@ -130,13 +130,13 @@ export const StoreSettings: React.FC<StoreSettingsProps> = ({
 
         {/* Notices */}
         {successMessage && (
-          <div className="mt-4 p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs flex items-center gap-2">
+          <div className="mt-4 p-3 rounded-xl bg-teal-50 border border-teal-200 text-[#0D9488] text-xs flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 shrink-0" />
             <span>{successMessage}</span>
           </div>
         )}
         {errorMessage && (
-          <div className="mt-4 p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs flex items-center gap-2">
+          <div className="mt-4 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
             <AlertCircle className="w-4 h-4 shrink-0" />
             <span>{errorMessage}</span>
           </div>
@@ -144,22 +144,22 @@ export const StoreSettings: React.FC<StoreSettingsProps> = ({
       </div>
 
       {/* Main Settings Form */}
-      <form onSubmit={handleSubmit} className="p-6 sm:p-8 rounded-2xl bg-slate-950 border border-slate-800 shadow-xl space-y-6">
+      <form onSubmit={handleSubmit} className="p-6 sm:p-8 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-6">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Business Name */}
           <div>
-            <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+            <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
               Store / Business Name *
             </label>
             <div className="relative">
-              <Store className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
+              <Store className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
               <input
                 type="text"
                 required
                 value={businessName}
                 onChange={(e) => setBusinessName(e.target.value)}
                 placeholder="e.g. Sharma Super Mart"
-                className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-10 pr-3 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-3 py-2.5 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#4338CA] focus:bg-white focus:ring-1 focus:ring-[#4338CA]"
               />
             </div>
             <span className="text-[10px] text-slate-500 mt-1 block">
@@ -169,30 +169,30 @@ export const StoreSettings: React.FC<StoreSettingsProps> = ({
 
           {/* Owner Full Name */}
           <div>
-            <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+            <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
               Proprietor / Owner Name
             </label>
             <div className="relative">
-              <User className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
+              <User className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
               <input
                 type="text"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 placeholder="e.g. Rajesh Sharma"
-                className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-10 pr-3 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-3 py-2.5 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#4338CA] focus:bg-white focus:ring-1 focus:ring-[#4338CA]"
               />
             </div>
           </div>
         </div>
 
         {/* UPI ID Configuration Box */}
-        <div className="p-5 rounded-2xl bg-gradient-to-br from-emerald-950/30 via-slate-900 to-slate-950 border border-emerald-500/30 shadow-lg space-y-3">
+        <div className="p-5 rounded-2xl bg-teal-50/60 border border-teal-200 shadow-sm space-y-3">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2 text-emerald-400 font-bold text-xs uppercase tracking-wider">
+            <div className="flex items-center gap-2 text-[#0D9488] font-bold text-xs uppercase tracking-wider">
               <QrCode className="w-4 h-4" />
               <span>Counter Dynamic UPI QR ID *</span>
             </div>
-            <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+            <span className="text-[10px] font-mono text-teal-800 bg-teal-100 px-2 py-0.5 rounded border border-teal-200">
               Zero MDR • Direct Settlement
             </span>
           </div>
@@ -203,16 +203,16 @@ export const StoreSettings: React.FC<StoreSettingsProps> = ({
               value={upiId}
               onChange={(e) => setUpiId(e.target.value)}
               placeholder="e.g. sharmamart@okaxis, 9876543210@paytm, or store@upi"
-              className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-2.5 text-sm text-emerald-300 font-mono placeholder-slate-600 focus:outline-none focus:border-emerald-400"
+              className="w-full bg-white border border-teal-300 rounded-xl px-4 py-2.5 text-sm text-slate-900 font-mono placeholder-slate-400 focus:outline-none focus:border-[#0D9488] focus:ring-1 focus:ring-[#0D9488]"
             />
           </div>
 
-          <div className="flex items-start gap-2 text-[11px] text-slate-400 leading-relaxed">
-            <Info className="w-3.5 h-3.5 text-emerald-400 mt-0.5 shrink-0" />
+          <div className="flex items-start gap-2 text-[11px] text-slate-600 leading-relaxed">
+            <Info className="w-3.5 h-3.5 text-[#0D9488] mt-0.5 shrink-0" />
             <span>
               Every counter bill will generate a scannable QR code matching{' '}
-              <code className="text-emerald-300 font-mono text-[10px]">
-                upi://pay?pa={upiId || '&lt;your-upi-id&gt;'}&amp;pn={encodeURIComponent(businessName || 'Store')}&amp;am=...&amp;cu=INR
+              <code className="text-teal-800 bg-white px-1.5 py-0.5 rounded border border-teal-200 font-mono text-[10px]">
+                upi://pay?pa={upiId || '<your-upi-id>'}&amp;pn={encodeURIComponent(businessName || 'Store')}&amp;am=...&amp;cu=INR
               </code>
               . Customers scan using Google Pay, PhonePe, Paytm, or BHIM.
             </span>
@@ -222,35 +222,35 @@ export const StoreSettings: React.FC<StoreSettingsProps> = ({
         {/* GSTIN & City */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
-            <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+            <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
               GSTIN (GST Number)
             </label>
             <div className="relative">
-              <FileText className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
+              <FileText className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
               <input
                 type="text"
                 value={gstin}
                 onChange={(e) => setGstin(e.target.value.toUpperCase())}
                 placeholder="e.g. 07AAAAA0000A1Z5"
                 maxLength={15}
-                className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-10 pr-3 py-2.5 text-xs text-white font-mono placeholder-slate-500 uppercase focus:outline-none focus:border-emerald-500"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-3 py-2.5 text-xs text-slate-900 font-mono placeholder-slate-400 uppercase focus:outline-none focus:border-[#4338CA] focus:bg-white focus:ring-1 focus:ring-[#4338CA]"
               />
             </div>
             <span className="text-[10px] text-slate-500 mt-1 block">Optional for non-GST composite merchants.</span>
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+            <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
               City / State
             </label>
             <div className="relative">
-              <MapPin className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
+              <MapPin className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
               <input
                 type="text"
                 value={city}
                 onChange={(e) => setCity(e.target.value)}
                 placeholder="e.g. Delhi NCR / Jaipur / Bengaluru"
-                className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-10 pr-3 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-3 py-2.5 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#4338CA] focus:bg-white focus:ring-1 focus:ring-[#4338CA]"
               />
             </div>
           </div>
@@ -258,7 +258,7 @@ export const StoreSettings: React.FC<StoreSettingsProps> = ({
 
         {/* Store Address */}
         <div>
-          <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+          <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
             Store Physical Address
           </label>
           <textarea
@@ -266,61 +266,61 @@ export const StoreSettings: React.FC<StoreSettingsProps> = ({
             value={storeAddress}
             onChange={(e) => setStoreAddress(e.target.value)}
             placeholder="Shop Number, Building/Market, Street Address, Landmark..."
-            className="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 resize-none"
+            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#4338CA] focus:bg-white focus:ring-1 focus:ring-[#4338CA] resize-none"
           />
         </div>
 
         {/* Contact Info (Phone & Email) */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
-            <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+            <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
               Contact Phone
             </label>
             <div className="relative">
-              <Phone className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
+              <Phone className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
               <input
                 type="tel"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 placeholder="+91 9876543210"
-                className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-10 pr-3 py-2.5 text-xs text-white font-mono placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-3 py-2.5 text-xs text-slate-900 font-mono placeholder-slate-400 focus:outline-none focus:border-[#4338CA] focus:bg-white focus:ring-1 focus:ring-[#4338CA]"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-1.5">
+            <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1.5">
               Store Email
             </label>
             <div className="relative">
-              <Mail className="w-4 h-4 text-slate-500 absolute left-3.5 top-3" />
+              <Mail className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
               <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="store@domain.com"
-                className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-10 pr-3 py-2.5 text-xs text-white font-mono placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                placeholder="store@gmail.com"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-3 py-2.5 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#4338CA] focus:bg-white focus:ring-1 focus:ring-[#4338CA]"
               />
             </div>
           </div>
         </div>
 
-        {/* Submit Button */}
-        <div className="pt-4 border-t border-slate-800 flex items-center justify-end">
+        {/* Action Button: Primary #4338CA */}
+        <div className="pt-4 border-t border-slate-200 flex justify-end">
           <button
             type="submit"
             disabled={saving}
-            className="px-6 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-400 hover:to-cyan-400 text-slate-950 font-bold text-xs uppercase tracking-wider flex items-center gap-2 transition-all shadow-glow-emerald disabled:opacity-50"
+            className="px-6 py-2.5 rounded-xl bg-[#4338CA] hover:bg-[#3730A3] text-white font-bold text-xs uppercase tracking-wider flex items-center gap-2 transition-all shadow-sm disabled:opacity-50"
           >
             {saving ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Saving Settings...</span>
+                <span>Saving Store Profile...</span>
               </>
             ) : (
               <>
                 <Save className="w-4 h-4" />
-                <span>Save Store Profile</span>
+                <span>Save Store Setup & UPI</span>
               </>
             )}
           </button>
