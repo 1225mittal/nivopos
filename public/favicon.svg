@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+  <rect width="100" height="100" rx="24" fill="#070A11" />
+  <rect x="2" y="2" width="96" height="96" rx="22" stroke="url(#borderG)" stroke-width="2" />
+  <path d="M28 72V28L54 58V28" stroke="url(#nivoGrad)" stroke-width="8" stroke-linecap="round" stroke-linejoin="round" />
+  <circle cx="72" cy="36" r="6" fill="#10B981" />
+  <circle cx="72" cy="64" r="6" fill="#06B6D4" />
+  <path d="M72 42V58" stroke="url(#cyanGrad)" stroke-width="3" stroke-linecap="round" stroke-dasharray="2 3" />
+  <defs>
+    <linearGradient id="borderG" x1="0" y1="0" x2="100" y2="100" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#10B981" />
+      <stop offset="0.5" stop-color="#06B6D4" />
+      <stop offset="1" stop-color="#1E293B" />
+    </linearGradient>
+    <linearGradient id="nivoGrad" x1="28" y1="28" x2="60" y2="72" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#10B981" />
+      <stop offset="1" stop-color="#00F5A0" />
+    </linearGradient>
+    <linearGradient id="cyanGrad" x1="72" y1="42" x2="72" y2="58" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#10B981" />
+      <stop offset="1" stop-color="#06B6D4" />
+    </linearGradient>
+  </defs>
+</svg>
