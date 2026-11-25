@@ -81,19 +81,19 @@ export const BentoComparison: React.FC = () => {
   ];
 
   return (
-    <section id="comparison" className="py-24 bg-[#070A11] relative">
+    <section id="comparison" className="py-24 bg-[#F4F6F9] relative">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="text-center max-w-3xl mx-auto mb-16">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-xs font-semibold mb-3">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-teal-50 border border-teal-200 text-[#0D9488] text-xs font-semibold mb-3">
             <Sparkles className="w-3.5 h-3.5" />
             <span>The Modernization Shift</span>
           </div>
-          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-black text-white tracking-tight">
+          <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-[#0F172A] tracking-tight">
             Traditional Fragmented Shop vs.{' '}
-            <span className="text-gradient-emerald">Nivo-Powered Business</span>
+            <span className="text-[#4338CA]">Nivo-Powered Business</span>
           </h2>
-          <p className="mt-4 text-sm sm:text-base text-slate-400">
+          <p className="mt-4 text-sm sm:text-base text-slate-600">
             See why forward-thinking retailers and distributors across India are retiring legacy desktop software for Nivo POS.
           </p>
         </div>
@@ -106,75 +106,50 @@ export const BentoComparison: React.FC = () => {
               <motion.div
                 key={idx}
                 whileHover={{ y: -4 }}
-                className="p-6 rounded-2xl bg-slate-950/80 border border-slate-800 hover:border-slate-700 transition-all flex flex-col justify-between shadow-xl"
+                className="p-6 rounded-2xl bg-white border border-slate-200 hover:border-indigo-300 transition-all flex flex-col justify-between shadow-sm"
               >
                 <div>
-                  <div className="flex items-center justify-between pb-3 border-b border-slate-800/80 mb-4">
-                    <span className="text-xs uppercase font-bold text-slate-400 tracking-wider">
+                  <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-4">
+                    <span className="text-xs uppercase font-semibold text-slate-500 tracking-wider">
                       {item.title}
                     </span>
-                    <div className="p-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-400">
+                    <div className="p-2 rounded-lg bg-indigo-50 border border-indigo-100 text-[#4338CA]">
                       <Icon className="w-4 h-4" />
                     </div>
                   </div>
 
                   {/* Traditional Pain Point */}
-                  <div className="p-3.5 rounded-xl bg-rose-950/20 border border-rose-900/30 mb-4">
-                    <div className="flex items-center gap-2 text-rose-400 text-xs font-bold mb-1">
-                      <XCircle className="w-4 h-4 shrink-0" />
+                  <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 mb-4">
+                    <div className="flex items-center gap-2 text-rose-700 text-xs font-bold mb-1">
+                      <XCircle className="w-4 h-4 shrink-0 text-rose-500" />
                       <span>{item.traditional.heading}</span>
                     </div>
-                    <p className="text-[11px] text-slate-400 leading-relaxed pl-6">
+                    <p className="text-[11px] text-slate-600 leading-relaxed pl-6">
                       {item.traditional.detail}
                     </p>
                   </div>
 
                   {/* Nivo Advantage */}
-                  <div className="p-3.5 rounded-xl bg-emerald-950/20 border border-emerald-900/40">
-                    <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold mb-1">
-                      <CheckCircle2 className="w-4 h-4 shrink-0" />
+                  <div className="p-3.5 rounded-xl bg-teal-50/70 border border-teal-200">
+                    <div className="flex items-center gap-2 text-[#0D9488] text-xs font-bold mb-1">
+                      <CheckCircle2 className="w-4 h-4 shrink-0 text-[#0D9488]" />
                       <span>{item.nivo.heading}</span>
                     </div>
-                    <p className="text-[11px] text-slate-300 leading-relaxed pl-6">
+                    <p className="text-[11px] text-slate-700 leading-relaxed pl-6">
                       {item.nivo.detail}
                     </p>
                   </div>
                 </div>
 
-                <div className="mt-4 pt-3 border-t border-slate-800/60 flex items-center justify-between">
+                <div className="mt-4 pt-3 border-t border-slate-200 flex items-center justify-between">
                   <span className="text-[10px] text-slate-500 uppercase font-mono">Impact Factor</span>
-                  <span className="text-[11px] font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
+                  <span className="text-[11px] font-bold text-[#0D9488] bg-teal-50 px-2.5 py-0.5 rounded-full border border-teal-200">
                     {item.nivo.highlight}
                   </span>
                 </div>
               </motion.div>
             );
           })}
-
-          {/* 6th Bento Card: Summary Callout */}
-          <motion.div
-            whileHover={{ y: -4 }}
-            className="p-6 rounded-2xl bg-gradient-to-br from-emerald-950/40 via-slate-950 to-cyan-950/40 border border-emerald-500/30 flex flex-col justify-between shadow-glow-emerald"
-          >
-            <div>
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold uppercase tracking-wider mb-4 border border-emerald-500/30">
-                Total Operating Advantage
-              </div>
-              <h3 className="text-xl font-black text-white leading-tight">
-                Up to ₹3.8 Lakhs Annual Savings & Extra Revenue
-              </h3>
-              <p className="mt-2 text-xs text-slate-300 leading-relaxed">
-                By eliminating hardware expenses, unrecovered customer udhar, aggregator commission cuts, and billing bottlenecks during rush hours.
-              </p>
-            </div>
-
-            <div className="mt-6 pt-4 border-t border-emerald-500/20">
-              <div className="flex items-center justify-between text-xs text-emerald-400 font-semibold">
-                <span>Deployment Time:</span>
-                <span className="font-mono text-white">Under 5 Minutes</span>
-              </div>
-            </div>
-          </motion.div>
         </div>
       </div>
     </section>

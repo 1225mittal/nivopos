@@ -28,10 +28,11 @@ All components must use these centralized colors configured in `tailwind.config.
 | **`nivo.amber`** | `#D97706` | `bg-nivo-amber`, `text-nivo-amber` | Low stock warnings, unpaid Udhar status |
 | **`nivo.rose`** | `#E11D48` | `bg-nivo-rose`, `text-nivo-rose` | Destructive actions, delete, error notices |
 
-### 🚫 Strict Color Prohibitions
+### 🚫 Strict Color Prohibitions & Mandatory Pre-Flight Verification
 - **NEVER** use dark black backgrounds (`#000000`, `#0a0a0a`, `bg-slate-950`, `bg-[#070A11]`, `bg-[#0B1120]`) anywhere in the Nivo POS application or dashboard.
-- **NEVER** use neon green (`#00FF00`, `#00F5A0`) or electric gaming-style glow aesthetics.
+- **NEVER** use neon green (`#00FF00`, `#00F5A0`, `emerald-`, `green-`, `lime-`) or electric gaming-style glow aesthetics.
 - Maintain high contrast, crisp typography (Inter / Segoe UI), clean borders (`#E2E8F0`), and professional business SaaS aesthetics.
+- **MANDATORY PRE-FLIGHT VERIFICATION RULE:** Before finishing any task, grep `src/` to verify zero dark card backgrounds (`bg-slate-900`, `bg-slate-950`, `bg-black`, `bg-[#0`) and zero `emerald-`/`green-` classes exist anywhere. Every component MUST strictly use `#F4F6F9`, `#FFFFFF`, `#0F172A`, `#4338CA`, and `#0D9488`.
 
 ---
 

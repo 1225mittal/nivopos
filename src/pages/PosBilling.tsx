@@ -21,6 +21,9 @@ import {
   Phone,
   Receipt,
   RotateCcw,
+  Copy,
+  Check,
+  Percent,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { supabase } from '../lib/supabase';
@@ -56,6 +59,12 @@ export const PosBilling: React.FC<PosBillingProps> = ({
   const [storeProducts, setStoreProducts] = useState<Product[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
 
+  // Tax Mode: 'inclusive' (MRP includes GST) vs 'exclusive' (+GST on base price)
+  const [taxMode, setTaxMode] = useState<'inclusive' | 'exclusive'>('inclusive');
+
+  // Dispatch preference: 'both' | 'print' | 'whatsapp'
+  const [dispatchPref, setDispatchPref] = useState<'both' | 'print' | 'whatsapp'>('both');
+
   // Active Bill State
   const [cart, setCart] = useState<CartItem[]>([]);
   const [discountInput, setDiscountInput] = useState<number | ''>('');
@@ -81,6 +90,54 @@ export const PosBilling: React.FC<PosBillingProps> = ({
   const [completedInvoice, setCompletedInvoice] = useState<Invoice | null>(null);
   const [completedItems, setCompletedItems] = useState<CartItem[]>([]);
   const [receiptModalOpen, setReceiptModalOpen] = useState(false);
+
+  // Copied UPI Link State
+  const [copiedUpi, setCopiedUpi] = useState(false);
+
+  // Modal WhatsApp Phone Input
+  const [modalPhone, setModalPhone] = useState('');
+
+  // Helper to compute line item values based on tax mode
+  const calculateItemValues = (
+    price: number,
+    qty: number,
+    gstRate: number,
+    mode: 'inclusive' | 'exclusive'
+  ) => {
+    if (mode === 'inclusive') {
+      const lineTotal = price * qty;
+      const taxable = lineTotal / (1 + gstRate / 100);
+      const gst = lineTotal - taxable;
+      return {
+        taxable_amount: Math.round(taxable * 100) / 100,
+        gst_amount: Math.round(gst * 100) / 100,
+        line_total: Math.round(lineTotal * 100) / 100,
+      };
+    } else {
+      const taxable = price * qty;
+      const gst = (taxable * gstRate) / 100;
+      const lineTotal = taxable + gst;
+      return {
+        taxable_amount: Math.round(taxable * 100) / 100,
+        gst_amount: Math.round(gst * 100) / 100,
+        line_total: Math.round(lineTotal * 100) / 100,
+      };
+    }
+  };
+
+  // Toggle Tax Mode and recalculate all cart items
+  const handleToggleTaxMode = (newMode: 'inclusive' | 'exclusive') => {
+    setTaxMode(newMode);
+    setCart((prev) =>
+      prev.map((item) => {
+        const vals = calculateItemValues(item.price, item.qty, item.gst_rate, newMode);
+        return {
+          ...item,
+          ...vals,
+        };
+      })
+    );
+  };
 
   // Fetch only this store's real products
   const fetchProducts = async () => {
@@ -147,8 +204,7 @@ export const PosBilling: React.FC<PosBillingProps> = ({
     } else {
       const price = Number(p.selling_price) || 0;
       const gstRate = Number(p.gst_rate) || 0;
-      const taxable = price / (1 + gstRate / 100);
-      const gst = price - taxable;
+      const vals = calculateItemValues(price, 1, gstRate, taxMode);
 
       const newItem: CartItem = {
         cart_id: Date.now().toString() + Math.random().toString().slice(-4),
@@ -158,9 +214,7 @@ export const PosBilling: React.FC<PosBillingProps> = ({
         price: price,
         qty: 1,
         gst_rate: gstRate,
-        taxable_amount: Math.round(taxable * 100) / 100,
-        gst_amount: Math.round(gst * 100) / 100,
-        line_total: price,
+        ...vals,
       };
 
       setCart((prev) => [newItem, ...prev]);
@@ -175,8 +229,7 @@ export const PosBilling: React.FC<PosBillingProps> = ({
     const price = Number(customPrice);
     const qty = Number(customQty) || 1;
     const gstRate = Number(customGst) || 0;
-    const singleTaxable = price / (1 + gstRate / 100);
-    const singleGst = price - singleTaxable;
+    const vals = calculateItemValues(price, qty, gstRate, taxMode);
 
     const newItem: CartItem = {
       cart_id: 'custom-' + Date.now().toString(),
@@ -186,9 +239,7 @@ export const PosBilling: React.FC<PosBillingProps> = ({
       price: price,
       qty: qty,
       gst_rate: gstRate,
-      taxable_amount: Math.round(singleTaxable * qty * 100) / 100,
-      gst_amount: Math.round(singleGst * qty * 100) / 100,
-      line_total: price * qty,
+      ...vals,
     };
 
     setCart((prev) => [newItem, ...prev]);
@@ -208,15 +259,11 @@ export const PosBilling: React.FC<PosBillingProps> = ({
     setCart((prev) =>
       prev.map((item) => {
         if (item.cart_id !== cartId) return item;
-        const total = item.price * newQty;
-        const taxable = total / (1 + item.gst_rate / 100);
-        const gst = total - taxable;
+        const vals = calculateItemValues(item.price, newQty, item.gst_rate, taxMode);
         return {
           ...item,
           qty: newQty,
-          taxable_amount: Math.round(taxable * 100) / 100,
-          gst_amount: Math.round(gst * 100) / 100,
-          line_total: total,
+          ...vals,
         };
       })
     );
@@ -239,29 +286,46 @@ export const PosBilling: React.FC<PosBillingProps> = ({
   };
 
   // Live Bill Calculations
-  const subtotal = useMemo(() => {
-    return cart.reduce((acc, item) => acc + item.line_total, 0);
+  const taxableSubtotal = useMemo(() => {
+    return cart.reduce((acc, item) => acc + item.taxable_amount, 0);
   }, [cart]);
 
-  const discount = Number(discountInput) || 0;
-  const taxableAfterDiscount = Math.max(0, subtotal - discount);
+  const rawSubtotal = useMemo(() => {
+    return cart.reduce((acc, item) => acc + item.line_total, 0);
+  }, [cart]);
 
   const totalGst = useMemo(() => {
     return cart.reduce((acc, item) => acc + item.gst_amount, 0);
   }, [cart]);
 
-  const grandTotal = Math.round(Math.max(0, subtotal - discount));
+  const discount = Number(discountInput) || 0;
+
+  // Grand total calculation:
+  // In inclusive mode: rawSubtotal is sum(price * qty) which already has GST embedded.
+  // In exclusive mode: rawSubtotal is taxableSubtotal + totalGst.
+  const grandTotal = Math.round(Math.max(0, rawSubtotal - discount));
   const cgst = Math.round((totalGst / 2) * 100) / 100;
   const sgst = cgst;
 
-  // Real UPI Payment Deep Link
+  // Real Dynamic UPI Payment Deep Link
   const upiId = userProfile?.upi_id || '';
   const businessName = userProfile?.business_name || userProfile?.store_name || 'Nivo Store';
   const upiPayUrl = upiId
-    ? `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(businessName)}&am=${grandTotal.toFixed(2)}&cu=INR`
+    ? `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(
+      businessName
+    )}&am=${grandTotal.toFixed(2)}&cu=INR&tn=${encodeURIComponent(
+      'Bill ' + (completedInvoice?.invoice_number || 'INV')
+    )}`
     : '';
 
-  // Generate & Save Bill to database
+  const handleCopyUpiLink = () => {
+    if (!upiPayUrl) return;
+    navigator.clipboard.writeText(upiPayUrl);
+    setCopiedUpi(true);
+    setTimeout(() => setCopiedUpi(false), 2000);
+  };
+
+  // Generate & Save Bill to database + Deduct Stock
   const handleGenerateAndSaveBill = async () => {
     if (cart.length === 0) {
       setFeedback({ type: 'error', message: 'Cart is empty. Add at least 1 item to bill.' });
@@ -282,7 +346,7 @@ export const PosBilling: React.FC<PosBillingProps> = ({
         customer_name: customerName.trim() || 'Counter Customer',
         customer_phone: customerPhone.trim() || null,
         payment_mode: paymentMode,
-        subtotal: subtotal,
+        subtotal: taxMode === 'inclusive' ? rawSubtotal : taxableSubtotal,
         total_gst: totalGst,
         discount_amount: discount,
         grand_total: grandTotal,
@@ -319,7 +383,7 @@ export const PosBilling: React.FC<PosBillingProps> = ({
         console.warn('[PosBilling] invoice_items insert note:', itemsErr.message);
       }
 
-      // 3. Deduct stock_qty from public.products for catalog products
+      // 3. Deduct stock_qty from public.products in Supabase & update local state
       for (const item of cart) {
         if (item.product_id) {
           const currentProd = storeProducts.find((p) => p.id === item.product_id);
@@ -334,15 +398,31 @@ export const PosBilling: React.FC<PosBillingProps> = ({
         }
       }
 
-      // Refresh local store products stock count
-      fetchProducts();
+      // Reactively update local product stock
+      setStoreProducts((prev) =>
+        prev.map((p) => {
+          const cartItem = cart.find((ci) => ci.product_id === p.id);
+          if (cartItem) {
+            return { ...p, stock_qty: Math.max(0, p.stock_qty - cartItem.qty) };
+          }
+          return p;
+        })
+      );
 
-      // Set for receipt modal
+      // Set completed invoice for receipt modal
       setCompletedInvoice(invoiceData);
       setCompletedItems([...cart]);
+      setModalPhone(customerPhone.trim());
       setReceiptModalOpen(true);
 
-      // Reset bill cart
+      // Handle Dispatch Preference
+      if (dispatchPref === 'print') {
+        setTimeout(() => window.print(), 350);
+      } else if (dispatchPref === 'whatsapp' && customerPhone.trim()) {
+        setTimeout(() => handleShareWhatsApp(customerPhone.trim(), invoiceData, cart), 350);
+      }
+
+      // Reset active bill cart
       setCart([]);
       setDiscountInput('');
       setCustomerName('');
@@ -355,34 +435,38 @@ export const PosBilling: React.FC<PosBillingProps> = ({
     }
   };
 
-  // WhatsApp formatted receipt text
-  const getWhatsAppMessage = () => {
-    if (!completedInvoice) return '';
-    const itemsList = completedItems
+  // WhatsApp formatted receipt text generator
+  const getWhatsAppMessage = (inv?: Invoice, itms?: CartItem[]) => {
+    const currentInv = inv || completedInvoice;
+    const currentItms = itms || completedItems;
+    if (!currentInv) return '';
+
+    const itemsList = currentItms
       .map((i) => `• ${i.name} (${i.qty} ${i.unit}) = ₹${i.line_total}`)
       .join('\n');
 
     return (
       `🧾 *TAX INVOICE - ${businessName}*\n` +
-      `Bill #: ${completedInvoice.invoice_number}\n` +
-      `Date: ${new Date(completedInvoice.created_at).toLocaleString('en-IN')}\n` +
-      `Customer: ${completedInvoice.customer_name}\n` +
+      `Bill #: ${currentInv.invoice_number}\n` +
+      `Date: ${new Date(currentInv.created_at).toLocaleString('en-IN')}\n` +
+      `Customer: ${currentInv.customer_name}\n` +
       `--------------------------------\n` +
       `${itemsList}\n` +
       `--------------------------------\n` +
-      `Subtotal: ₹${completedInvoice.subtotal.toFixed(2)}\n` +
-      (completedInvoice.discount_amount > 0 ? `Discount: -₹${completedInvoice.discount_amount.toFixed(2)}\n` : '') +
-      `GST (CGST+SGST): ₹${completedInvoice.total_gst.toFixed(2)}\n` +
-      `*GRAND TOTAL: ₹${completedInvoice.grand_total.toLocaleString('en-IN')}*\n` +
-      `Payment Mode: ${completedInvoice.payment_mode}\n\n` +
+      `Subtotal: ₹${currentInv.subtotal.toFixed(2)}\n` +
+      (currentInv.discount_amount > 0 ? `Discount: -₹${currentInv.discount_amount.toFixed(2)}\n` : '') +
+      `GST (CGST+SGST): ₹${currentInv.total_gst.toFixed(2)}\n` +
+      `*GRAND TOTAL: ₹${currentInv.grand_total.toLocaleString('en-IN')}*\n` +
+      `Payment Mode: ${currentInv.payment_mode}\n\n` +
       `Thank you for shopping with ${businessName}!\n` +
       `Powered by nivopos.in`
     );
   };
 
-  const handleShareWhatsApp = () => {
-    const text = getWhatsAppMessage();
-    const phoneClean = completedInvoice?.customer_phone?.replace(/\D/g, '') || '';
+  const handleShareWhatsApp = (customPhoneNum?: string, inv?: Invoice, itms?: CartItem[]) => {
+    const text = getWhatsAppMessage(inv, itms);
+    const targetPhone = (customPhoneNum !== undefined ? customPhoneNum : modalPhone) || '';
+    const phoneClean = targetPhone.replace(/\D/g, '');
     const phoneParam = phoneClean.length === 10 ? `91${phoneClean}` : phoneClean;
     const url = phoneParam
       ? `https://wa.me/${phoneParam}?text=${encodeURIComponent(text)}`
@@ -408,11 +492,10 @@ export const PosBilling: React.FC<PosBillingProps> = ({
       {/* Notifications */}
       {feedback && (
         <div
-          className={`p-3 rounded-xl border text-xs flex items-center gap-2 ${
-            feedback.type === 'success'
-              ? 'bg-teal-50 border-teal-200 text-[#0D9488]'
-              : 'bg-rose-50 border-rose-200 text-rose-700'
-          }`}
+          className={`p-3 rounded-xl border text-xs flex items-center gap-2 ${feedback.type === 'success'
+            ? 'bg-teal-50 border-teal-200 text-[#0D9488]'
+            : 'bg-rose-50 border-rose-200 text-rose-700'
+            }`}
         >
           {feedback.type === 'success' ? (
             <CheckCircle2 className="w-4 h-4 shrink-0" />
@@ -425,69 +508,112 @@ export const PosBilling: React.FC<PosBillingProps> = ({
 
       {/* Main Billing Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* ================= LEFT 7 COLS: SCANNER & CART ================= */}
+        {/* ================= LEFT 7 COLS: SCANNER, TAX TOGGLE & CART ================= */}
         <div className="lg:col-span-7 space-y-4">
-          {/* Barcode Scanner & Search Bar */}
-          <div className="relative">
-            <div className="flex items-center gap-2 p-2 rounded-2xl bg-white border border-slate-200 shadow-sm">
-              <ScanLine className="w-5 h-5 text-[#4338CA] ml-2 shrink-0 animate-pulse" />
-              <input
-                ref={searchInputRef}
-                type="text"
-                value={searchInput}
-                onChange={(e) => {
-                  setSearchInput(e.target.value);
-                  setShowDropdown(true);
-                }}
-                onKeyDown={handleBarcodeKeyDown}
-                placeholder="Scan barcode or type item name & press Enter..."
-                className="w-full bg-transparent text-xs text-slate-900 placeholder-slate-400 focus:outline-none"
-              />
-              <button
-                type="button"
-                onClick={() => setCustomItemModal(true)}
-                className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-[#4338CA] border border-indigo-200 text-xs font-bold transition-colors shrink-0 flex items-center gap-1"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Custom Item</span>
-              </button>
+          {/* Top Bar: Barcode Scanner & Tax Mode Toggle */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex-1 relative">
+              <div className="flex items-center gap-2 p-2 rounded-2xl bg-white border border-slate-200 shadow-sm">
+                <ScanLine className="w-5 h-5 text-[#4338CA] ml-2 shrink-0 animate-pulse" />
+                <input
+                  ref={searchInputRef}
+                  type="text"
+                  value={searchInput}
+                  onChange={(e) => {
+                    setSearchInput(e.target.value);
+                    setShowDropdown(true);
+                  }}
+                  onKeyDown={handleBarcodeKeyDown}
+                  placeholder="Scan barcode or type item name & press Enter..."
+                  className="w-full bg-transparent text-xs text-slate-900 placeholder-slate-400 focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => setCustomItemModal(true)}
+                  className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-[#4338CA] border border-indigo-200 text-xs font-bold transition-colors shrink-0 flex items-center gap-1"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Custom Item</span>
+                </button>
+              </div>
+
+              {/* Dropdown product matches */}
+              {showDropdown && searchInput.trim() && (
+                <div className="absolute top-full left-0 right-0 mt-1.5 bg-white border border-slate-200 rounded-2xl shadow-xl z-30 divide-y divide-slate-100 overflow-hidden">
+                  {filteredProducts.length === 0 ? (
+                    <div className="p-3 text-xs text-slate-500 text-center">
+                      No matching products. Press "Custom Item" to add directly.
+                    </div>
+                  ) : (
+                    filteredProducts.map((p) => {
+                      const isLowStock = p.stock_qty <= (p.low_stock_alert || 5);
+                      const isOutOfStock = p.stock_qty <= 0;
+                      return (
+                        <div
+                          key={p.id}
+                          onClick={() => {
+                            addItemToCart(p);
+                            setSearchInput('');
+                            setShowDropdown(false);
+                          }}
+                          className="p-3 hover:bg-slate-50 cursor-pointer flex items-center justify-between text-xs transition-colors"
+                        >
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <p className="font-bold text-[#0F172A]">{p.name}</p>
+                              {isOutOfStock ? (
+                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-rose-50 text-rose-700 border border-rose-200">
+                                  Out of Stock
+                                </span>
+                              ) : isLowStock ? (
+                                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200">
+                                  Low: {p.stock_qty} {p.unit}
+                                </span>
+                              ) : null}
+                            </div>
+                            <p className="text-[10px] text-slate-500 font-mono">
+                              {p.barcode ? `Barcode: ${p.barcode} • ` : ''}Stock: {p.stock_qty} {p.unit}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <span className="font-bold text-[#4338CA] font-mono">
+                              ₹{Number(p.selling_price).toFixed(2)}
+                            </span>
+                            <p className="text-[10px] text-slate-500">GST {p.gst_rate}%</p>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              )}
             </div>
 
-            {/* Dropdown product matches */}
-            {showDropdown && searchInput.trim() && (
-              <div className="absolute top-full left-0 right-0 mt-1.5 bg-white border border-slate-200 rounded-2xl shadow-xl z-30 divide-y divide-slate-100 overflow-hidden">
-                {filteredProducts.length === 0 ? (
-                  <div className="p-3 text-xs text-slate-500 text-center">
-                    No matching products. Press "Custom Item" to add directly.
-                  </div>
-                ) : (
-                  filteredProducts.map((p) => (
-                    <div
-                      key={p.id}
-                      onClick={() => {
-                        addItemToCart(p);
-                        setSearchInput('');
-                        setShowDropdown(false);
-                      }}
-                      className="p-3 hover:bg-slate-50 cursor-pointer flex items-center justify-between text-xs transition-colors"
-                    >
-                      <div>
-                        <p className="font-bold text-[#0F172A]">{p.name}</p>
-                        <p className="text-[10px] text-slate-500 font-mono">
-                          {p.barcode ? `Barcode: ${p.barcode} • ` : ''}Stock: {p.stock_qty} {p.unit}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <span className="font-bold text-[#4338CA] font-mono">
-                          ₹{Number(p.selling_price).toFixed(2)}
-                        </span>
-                        <p className="text-[10px] text-slate-500">GST {p.gst_rate}%</p>
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            )}
+            {/* Tax Mode Segment Switcher */}
+            <div className="flex items-center bg-slate-100 p-1 rounded-2xl border border-slate-200 text-xs shrink-0">
+              <button
+                type="button"
+                onClick={() => handleToggleTaxMode('inclusive')}
+                className={`px-3 py-1.5 rounded-xl font-bold transition-all ${taxMode === 'inclusive'
+                  ? 'bg-white text-[#4338CA] shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                title="Selling price already includes GST"
+              >
+                Tax Inclusive (MRP)
+              </button>
+              <button
+                type="button"
+                onClick={() => handleToggleTaxMode('exclusive')}
+                className={`px-3 py-1.5 rounded-xl font-bold transition-all ${taxMode === 'exclusive'
+                  ? 'bg-white text-[#4338CA] shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                title="Add GST on top of item base price"
+              >
+                Tax Exclusive (+GST)
+              </button>
+            </div>
           </div>
 
           {/* Cart Items Table */}
@@ -519,11 +645,14 @@ export const PosBilling: React.FC<PosBillingProps> = ({
             ) : (
               <div className="divide-y divide-slate-100 max-h-[380px] overflow-y-auto">
                 {cart.map((item) => (
-                  <div key={item.cart_id} className="px-4 py-3 grid grid-cols-12 items-center hover:bg-slate-50/60 text-xs transition-colors">
+                  <div
+                    key={item.cart_id}
+                    className="px-4 py-3 grid grid-cols-12 items-center hover:bg-slate-50/60 text-xs transition-colors"
+                  >
                     <div className="col-span-5">
                       <p className="font-semibold text-[#0F172A] truncate">{item.name}</p>
                       <p className="text-[10px] text-slate-500">
-                        GST: {item.gst_rate}% (₹{item.gst_amount})
+                        GST: {item.gst_rate}% (₹{item.gst_amount.toFixed(2)}) • {taxMode === 'inclusive' ? 'Incl' : 'Excl'}
                       </p>
                     </div>
 
@@ -569,7 +698,9 @@ export const PosBilling: React.FC<PosBillingProps> = ({
           {/* Quick Clear & Active Items Count */}
           {cart.length > 0 && (
             <div className="flex items-center justify-between text-xs text-slate-500 px-1">
-              <span>{cart.reduce((a, b) => a + b.qty, 0)} units across {cart.length} line items</span>
+              <span>
+                {cart.reduce((a, b) => a + b.qty, 0)} units across {cart.length} line items ({taxMode === 'inclusive' ? 'Tax Inclusive' : 'Tax Exclusive'})
+              </span>
               <button
                 onClick={handleClearCart}
                 className="text-rose-600 hover:underline flex items-center gap-1 font-medium"
@@ -617,8 +748,12 @@ export const PosBilling: React.FC<PosBillingProps> = ({
             {/* Calculations Breakdown */}
             <div className="space-y-2 text-xs text-slate-600">
               <div className="flex justify-between">
-                <span className="text-slate-500">Subtotal:</span>
-                <span className="font-mono text-slate-900">₹{subtotal.toFixed(2)}</span>
+                <span className="text-slate-500">
+                  {taxMode === 'inclusive' ? 'Subtotal (Gross):' : 'Taxable Subtotal:'}
+                </span>
+                <span className="font-mono text-slate-900">
+                  ₹{(taxMode === 'inclusive' ? rawSubtotal : taxableSubtotal).toFixed(2)}
+                </span>
               </div>
 
               {/* Discount Input */}
@@ -638,7 +773,9 @@ export const PosBilling: React.FC<PosBillingProps> = ({
               </div>
 
               <div className="flex justify-between">
-                <span className="text-slate-500">CGST + SGST:</span>
+                <span className="text-slate-500">
+                  Total GST ({taxMode === 'inclusive' ? 'Embedded' : 'Added'}):
+                </span>
                 <span className="font-mono text-[#0D9488] font-semibold">+₹{totalGst.toFixed(2)}</span>
               </div>
             </div>
@@ -655,6 +792,45 @@ export const PosBilling: React.FC<PosBillingProps> = ({
                   </span>
                   <p className="text-[10px] text-indigo-700 font-medium">Net Payable Amount</p>
                 </div>
+              </div>
+            </div>
+
+            {/* Dispatch Preference Selector */}
+            <div className="space-y-1.5 pb-2">
+              <span className="text-[10px] uppercase font-semibold text-slate-500 tracking-wider">
+                Bill Action on Save:
+              </span>
+              <div className="grid grid-cols-3 gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setDispatchPref('both')}
+                  className={`py-1.5 rounded-lg font-bold transition-all text-center ${dispatchPref === 'both'
+                    ? 'bg-white text-[#4338CA] shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                >
+                  Both / Modal
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDispatchPref('print')}
+                  className={`py-1.5 rounded-lg font-bold transition-all text-center ${dispatchPref === 'print'
+                    ? 'bg-white text-[#4338CA] shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                >
+                  Auto-Print
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDispatchPref('whatsapp')}
+                  className={`py-1.5 rounded-lg font-bold transition-all text-center ${dispatchPref === 'whatsapp'
+                    ? 'bg-white text-[#0D9488] shadow-sm'
+                    : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                >
+                  Auto-WhatsApp
+                </button>
               </div>
             </div>
 
@@ -677,11 +853,10 @@ export const PosBilling: React.FC<PosBillingProps> = ({
                       key={mode.id}
                       type="button"
                       onClick={() => setPaymentMode(mode.id as any)}
-                      className={`flex items-center gap-2 p-2.5 rounded-xl border text-xs font-bold transition-all ${
-                        isSelected
-                          ? 'bg-teal-50 text-[#0D9488] border-teal-500 shadow-sm'
-                          : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
-                      }`}
+                      className={`flex items-center gap-2 p-2.5 rounded-xl border text-xs font-bold transition-all ${isSelected
+                        ? 'bg-teal-50 text-[#0D9488] border-teal-500 shadow-sm'
+                        : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                        }`}
                     >
                       <Icon className="w-4 h-4 shrink-0" />
                       <span>{mode.label}</span>
@@ -691,17 +866,36 @@ export const PosBilling: React.FC<PosBillingProps> = ({
               </div>
             </div>
 
-            {/* UPI QR Display if mode === UPI QR */}
+            {/* Dynamic UPI QR Display if mode === UPI QR */}
             {paymentMode === 'UPI QR' && (
               <div className="p-4 rounded-2xl bg-teal-50/40 border border-teal-200 text-center space-y-3">
                 {upiId ? (
                   <>
                     <div className="flex justify-center p-3 bg-white rounded-xl w-max mx-auto border border-teal-200 shadow-sm">
-                      <QRCodeSVG value={upiPayUrl} size={150} />
+                      <QRCodeSVG value={upiPayUrl} size={150} level="M" />
                     </div>
-                    <div>
-                      <p className="text-[11px] font-mono text-[#0D9488] font-bold">Scan to Pay ₹{grandTotal}</p>
+                    <div className="space-y-1">
+                      <p className="text-[11px] font-mono text-[#0D9488] font-bold">
+                        Scan to Pay ₹{grandTotal}
+                      </p>
                       <p className="text-[10px] text-slate-500 font-mono">{upiId}</p>
+                      <button
+                        type="button"
+                        onClick={handleCopyUpiLink}
+                        className="inline-flex items-center gap-1 text-[10px] text-[#4338CA] hover:underline font-semibold mt-1"
+                      >
+                        {copiedUpi ? (
+                          <>
+                            <Check className="w-3 h-3 text-[#0D9488]" />
+                            <span className="text-[#0D9488]">UPI Link Copied!</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3 h-3" />
+                            <span>Copy UPI Payment Link</span>
+                          </>
+                        )}
+                      </button>
                     </div>
                   </>
                 ) : (
@@ -711,7 +905,7 @@ export const PosBilling: React.FC<PosBillingProps> = ({
                     </p>
                     <button
                       onClick={onNavigateToSettings}
-                      className="px-3 py-1.5 rounded-lg bg-teal-600 text-white text-xs font-bold hover:bg-teal-700 shadow-sm"
+                      className="px-3 py-1.5 rounded-lg bg-nivo-teal text-white text-xs font-bold hover:bg-nivo-tealHover shadow-sm"
                     >
                       Configure UPI ID in Store Setup →
                     </button>
@@ -744,7 +938,7 @@ export const PosBilling: React.FC<PosBillingProps> = ({
 
       {/* ================= MODAL: QUICK CUSTOM ITEM ================= */}
       {customItemModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-800/40 backdrop-blur-sm">
           <div className="relative w-full max-w-sm bg-white border border-slate-200 rounded-3xl p-6 shadow-2xl space-y-4 text-slate-900">
             <div className="flex items-center justify-between pb-2 border-b border-slate-200">
               <h3 className="text-sm font-bold text-[#0F172A]">Add Custom Item to Bill</h3>
@@ -843,9 +1037,9 @@ export const PosBilling: React.FC<PosBillingProps> = ({
         </div>
       )}
 
-      {/* ================= MODAL: PRINTABLE RECEIPT ================= */}
+      {/* ================= MODAL: PRINTABLE RECEIPT & WHATSAPP ================= */}
       {receiptModalOpen && completedInvoice && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-800/40 backdrop-blur-sm overflow-y-auto">
           <div className="relative w-full max-w-md bg-white text-slate-900 rounded-3xl p-6 sm:p-8 shadow-2xl my-auto space-y-5 border border-slate-200">
             {/* Action Bar (Hidden during print) */}
             <div className="no-print flex items-center justify-between pb-3 border-b border-slate-200">
@@ -954,8 +1148,33 @@ export const PosBilling: React.FC<PosBillingProps> = ({
               </div>
             </div>
 
+            {/* Quick WhatsApp Phone Number Override */}
+            <div className="no-print pt-2 space-y-2 border-t border-slate-200">
+              <label className="block text-[10px] font-semibold text-slate-600 uppercase">
+                Send WhatsApp Bill to Mobile:
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="tel"
+                  maxLength={10}
+                  value={modalPhone}
+                  onChange={(e) => setModalPhone(e.target.value.replace(/\D/g, ''))}
+                  placeholder="10-digit mobile number"
+                  className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono text-slate-900 focus:outline-none focus:border-[#4338CA] focus:bg-white"
+                />
+                <button
+                  type="button"
+                  onClick={() => handleShareWhatsApp(modalPhone)}
+                  className="px-3.5 py-2 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center gap-1.5 transition-colors shadow-sm shrink-0"
+                >
+                  <Share2 className="w-3.5 h-3.5" />
+                  <span>Send</span>
+                </button>
+              </div>
+            </div>
+
             {/* Working Action Buttons (Hidden during print) */}
-            <div className="no-print pt-2 space-y-2">
+            <div className="no-print pt-1 space-y-2">
               <div className="grid grid-cols-2 gap-2">
                 <button
                   onClick={() => window.print()}
@@ -966,7 +1185,7 @@ export const PosBilling: React.FC<PosBillingProps> = ({
                 </button>
 
                 <button
-                  onClick={handleShareWhatsApp}
+                  onClick={() => handleShareWhatsApp(modalPhone)}
                   className="py-2.5 px-3 rounded-xl bg-teal-600 hover:bg-teal-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-colors shadow-sm"
                 >
                   <Share2 className="w-4 h-4" />

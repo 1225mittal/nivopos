@@ -11,7 +11,7 @@ You are working on Nivo POS (nivopos.in), India's Next-Gen Retail & Distribution
    - Primary Brand Accent: #4338CA, hover #3730A3 (class: bg-nivo-indigo hover:bg-nivo-indigoHover)
    - Secondary / Active Accent: #0D9488 (class: text-nivo-teal / bg-nivo-teal)
    - Warning / Low Stock Accent: #D97706 (class: text-nivo-amber / bg-nivo-amber)
-   - STRICT PROHIBITION: NEVER use dark black backgrounds (#000, #0a0a0a, slate-950, #070A11, #0B1120) or neon green. Always use the Light Business SaaS palette.
+   - STRICT PROHIBITION & MANDATORY PRE-FLIGHT RULE: NEVER use dark black backgrounds (#000, #0a0a0a, slate-950, #070A11, #0B1120) or neon green. Always use the Light Business SaaS palette. Before finishing any task, grep `src/` to verify zero dark backgrounds (`bg-slate-900`, `bg-slate-950`, `bg-black`, `bg-[#0`) and zero `emerald-`/`green-` classes exist anywhere. Every component MUST strictly use `#F4F6F9`, `#FFFFFF`, `#0F172A`, `#4338CA`, and `#0D9488`.
 
 2. MULTI-TENANT DATA ISOLATION:
    - Every Supabase query on store tables (products, invoices, invoice_items, customers, etc.) MUST explicitly filter and insert with `store_id: session.user.id` (auth.uid()).

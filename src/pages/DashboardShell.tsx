@@ -7,12 +7,14 @@ import {
   Settings,
   LogOut,
   MapPin,
+  FileText,
 } from 'lucide-react';
 import { StoreProfile, ActiveTab } from '../types';
 import { PosBilling } from './PosBilling';
 import { ProductsCatalog } from './ProductsCatalog';
 import { SalesHistory } from './SalesHistory';
 import { StoreSettings } from './StoreSettings';
+import { PurchaseBills } from './PurchaseBills';
 
 interface DashboardShellProps {
   currentUser: any;
@@ -103,6 +105,18 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
             </button>
 
             <button
+              onClick={() => setActiveTab('purchase-bills')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                activeTab === 'purchase-bills'
+                  ? 'bg-white text-[#0D9488] shadow-sm border border-teal-200/80 font-bold'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <FileText className="w-3.5 h-3.5" />
+              <span>Purchase Bills</span>
+            </button>
+
+            <button
               onClick={() => setActiveTab('sales')}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all ${
                 activeTab === 'sales'
@@ -156,6 +170,14 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
           <ProductsCatalog
             currentUser={currentUser}
             onNavigateToPos={() => setActiveTab('pos')}
+          />
+        )}
+
+        {activeTab === 'purchase-bills' && (
+          <PurchaseBills
+            currentUser={currentUser}
+            userProfile={localProfile}
+            onNavigateToProducts={() => setActiveTab('products')}
           />
         )}
 

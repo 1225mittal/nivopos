@@ -117,4 +117,25 @@ export interface SubscriptionPayment {
 
 export type AuthMode = 'signin' | 'signup';
 export type AuthMethod = 'phone' | 'email';
-export type ActiveTab = 'pos' | 'products' | 'sales' | 'settings';
+export type ActiveTab = 'pos' | 'products' | 'purchase-bills' | 'sales' | 'settings';
+
+export interface PurchaseBillItem {
+  id?: string;
+  name: string;
+  qty: number;
+  unit: string;
+  purchase_price: number;
+  selling_price?: number;
+  gst_rate: number;
+  total_amount: number;
+}
+
+export interface PurchaseBillData {
+  supplier_name: string;
+  bill_number: string;
+  bill_date: string;
+  items: PurchaseBillItem[];
+  subtotal: number;
+  total_gst: number;
+  grand_total: number;
+}

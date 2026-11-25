@@ -141,27 +141,27 @@ export const AdminUsersPanel: React.FC<AdminUsersPanelProps> = ({
   }, [stores]);
 
   return (
-    <div className="min-h-screen bg-[#070A11] text-slate-100 flex flex-col justify-between selection:bg-emerald-500/30 selection:text-emerald-300">
+    <div className="min-h-screen bg-[#F4F6F9] text-slate-800 flex flex-col justify-between selection:bg-indigo-500/20 selection:text-indigo-700">
       {/* ================= HQ TOP HEADER ================= */}
-      <header className="border-b border-slate-800 bg-[#0B1120] px-4 sm:px-8 py-4 sticky top-0 z-40 shadow-xl">
+      <header className="border-b border-slate-200 bg-white px-4 sm:px-8 py-4 sticky top-0 z-40 shadow-sm">
         <div className="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-emerald-500 p-[1.5px] flex items-center justify-center shadow-glow-cyan">
-              <div className="w-full h-full bg-[#070A11] rounded-[10px] flex items-center justify-center">
-                <Building2 className="w-5 h-5 text-cyan-400" />
-              </div>
+            <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center shadow-sm">
+              <Building2 className="w-5 h-5 text-[#4338CA]" />
             </div>
+
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-base font-black text-white tracking-tight">
-                  NIVO<span className="text-emerald-400">POS</span> HQ COMMAND CENTER
-                </h1>
-                <span className="text-[10px] font-mono font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-cyan-500/10 text-cyan-400 border border-cyan-500/30">
-                  Founder Intelligence
+                <span className="font-bold text-[#0F172A] text-lg tracking-tight">
+                  NIVO<span className="text-[#4338CA]">POS</span>
+                </span>
+                <span className="text-[10px] uppercase font-bold tracking-widest px-2 py-0.5 rounded bg-indigo-50 text-[#4338CA] border border-indigo-200">
+                  HQ Command Center
                 </span>
               </div>
-              <p className="text-[11px] text-slate-400">
-                Authorized Admin: <strong className="text-slate-200">{currentUser?.email || currentUser?.phone || currentUser?.id}</strong>
+              <p className="text-[11px] text-slate-500 flex items-center gap-1.5 mt-0.5">
+                <ShieldAlert className="w-3.5 h-3.5 text-[#0D9488]" />
+                <span>Founder SaaS Intelligence & Store Directory</span>
               </p>
             </div>
           </div>
@@ -170,158 +170,145 @@ export const AdminUsersPanel: React.FC<AdminUsersPanelProps> = ({
             <button
               onClick={handleRefresh}
               disabled={refreshing}
-              className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs text-slate-300 transition-all"
+              className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-200 text-xs text-slate-700 transition-colors shadow-sm"
+              title="Refresh SaaS Data"
             >
-              <RefreshCw className={`w-3.5 h-3.5 text-emerald-400 ${refreshing ? 'animate-spin' : ''}`} />
-              <span className="hidden sm:inline">Sync Intelligence</span>
+              <RefreshCw className={`w-3.5 h-3.5 text-[#4338CA] ${refreshing ? 'animate-spin' : ''}`} />
+              <span className="hidden sm:inline">Refresh Data</span>
             </button>
 
             <button
               onClick={() => onSignOut()}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-rose-950/40 border border-slate-800 hover:border-rose-800/60 text-xs text-slate-300 hover:text-rose-400 transition-all"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-rose-50 border border-slate-200 hover:border-rose-200 text-xs text-slate-700 hover:text-rose-600 transition-colors shadow-sm"
+              title="Sign Out of HQ"
             >
               <LogOut className="w-3.5 h-3.5" />
-              <span>Sign Out</span>
+              <span className="hidden sm:inline">Exit HQ</span>
             </button>
           </div>
         </div>
       </header>
 
-      {/* ================= MAIN HQ BODY ================= */}
+      {/* ================= MAIN CONTENT ================= */}
       <main className="max-w-7xl mx-auto px-4 sm:px-8 py-8 flex-1 w-full space-y-8">
+        {/* Notice alert if query fails */}
         {errorNotice && (
-          <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs flex items-center gap-2">
+          <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
             <AlertTriangle className="w-4 h-4 shrink-0" />
             <span>{errorNotice}</span>
           </div>
         )}
 
-        {/* ---------------- 1. TOP KPI CARDS ---------------- */}
-        <section className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-          {/* Card 1: Total Stores */}
-          <div className="p-6 rounded-2xl bg-slate-950 border border-slate-800 shadow-xl relative overflow-hidden">
+        {/* 1. TOP SAAS KPI CARDS */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+          {/* KPI 1 */}
+          <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm relative overflow-hidden">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                Total Registered Stores
-              </span>
-              <div className="p-2 rounded-xl bg-cyan-500/10 text-cyan-400">
+              <span className="text-xs uppercase font-semibold text-slate-500">Total Registered Stores</span>
+              <div className="p-2 rounded-xl bg-indigo-50 text-[#4338CA]">
                 <Building2 className="w-4 h-4" />
               </div>
             </div>
-            <div className="mt-3 text-3xl font-black font-mono text-white tracking-tight">
-              {loading ? '...' : totalStores}
+            <div className="text-3xl font-bold text-[#0F172A] font-mono mt-3">
+              {totalStores}
             </div>
-            <p className="mt-1 text-[11px] text-slate-400 font-medium">
-              Registered across Indian Retail & FMCG
-            </p>
+            <p className="text-[11px] text-slate-500 mt-1">Live in public.store_profiles</p>
           </div>
 
-          {/* Card 2: Active Beta / Paid */}
-          <div className="p-6 rounded-2xl bg-slate-950 border border-slate-800 shadow-xl relative overflow-hidden">
+          {/* KPI 2 */}
+          <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm relative overflow-hidden">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                Active Beta / Paid Stores
-              </span>
-              <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400">
-                <CheckCircle2 className="w-4 h-4" />
+              <span className="text-xs uppercase font-semibold text-slate-500">Active Beta Stores</span>
+              <div className="p-2 rounded-xl bg-teal-50 text-[#0D9488]">
+                <Users className="w-4 h-4" />
               </div>
             </div>
-            <div className="mt-3 text-3xl font-black font-mono text-emerald-400 tracking-tight">
-              {loading ? '...' : activeBetaStores}
+            <div className="text-3xl font-bold text-[#0D9488] font-mono mt-3">
+              {activeBetaStores}
             </div>
-            <p className="mt-1 text-[11px] text-slate-400 font-medium">
-              100% of sign-ups granted instant access
-            </p>
+            <p className="text-[11px] text-slate-500 mt-1">100% Modules Provisioned</p>
           </div>
 
-          {/* Card 3: Total SaaS Revenue */}
-          <div className="p-6 rounded-2xl bg-slate-950 border border-slate-800 shadow-xl relative overflow-hidden">
+          {/* KPI 3 */}
+          <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm relative overflow-hidden">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                Total SaaS Revenue
-              </span>
-              <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400">
+              <span className="text-xs uppercase font-semibold text-slate-500">Total SaaS Revenue (₹)</span>
+              <div className="p-2 rounded-xl bg-indigo-50 text-[#4338CA]">
                 <IndianRupee className="w-4 h-4" />
               </div>
             </div>
-            <div className="mt-3 text-3xl font-black font-mono text-white tracking-tight">
-              {loading ? '...' : `₹${totalRevenue.toLocaleString('en-IN')}`}
+            <div className="text-3xl font-bold text-[#0F172A] font-mono mt-3">
+              ₹{totalRevenue.toLocaleString('en-IN')}
             </div>
-            <p className="mt-1 text-[11px] text-emerald-400 font-medium">
-              Recorded in public.subscription_payments
-            </p>
+            <p className="text-[11px] text-slate-500 mt-1">From public.subscription_payments</p>
           </div>
 
-          {/* Card 4: Renewals Due This Month */}
-          <div className="p-6 rounded-2xl bg-slate-950 border border-slate-800 shadow-xl relative overflow-hidden">
+          {/* KPI 4 */}
+          <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-sm relative overflow-hidden">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                Renewals Due This Month
-              </span>
-              <div className="p-2 rounded-xl bg-amber-500/10 text-amber-400">
+              <span className="text-xs uppercase font-semibold text-slate-500">Renewals Due This Month</span>
+              <div className="p-2 rounded-xl bg-amber-50 text-amber-700">
                 <Calendar className="w-4 h-4" />
               </div>
             </div>
-            <div className="mt-3 text-3xl font-black font-mono text-amber-300 tracking-tight">
-              {loading ? '...' : renewalsDueThisMonth}
+            <div className="text-3xl font-bold text-amber-700 font-mono mt-3">
+              {renewalsDueThisMonth}
             </div>
-            <p className="mt-1 text-[11px] text-slate-400 font-medium">
-              Based on merchant next_renewal_date
-            </p>
+            <p className="text-[11px] text-slate-500 mt-1">Free Launch Beta 1-Year Cycle</p>
           </div>
-        </section>
+        </div>
 
-        {/* ---------------- 2. SECTION TABS: STORES DIRECTORY VS PAYMENTS LEDGER ---------------- */}
-        <div className="flex items-center gap-3 border-b border-slate-800 pb-3">
+        {/* 2. SECTION TABS: STORE DIRECTORY VS PAYMENTS LEDGER */}
+        <div className="flex items-center gap-2 border-b border-slate-200 pb-3">
           <button
             onClick={() => setActiveTab('stores')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all border ${
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
               activeTab === 'stores'
-                ? 'bg-slate-900 text-emerald-400 border-emerald-500/40 shadow-glow-emerald'
-                : 'bg-transparent text-slate-400 border-transparent hover:text-slate-200'
+                ? 'bg-white text-[#4338CA] border border-indigo-200 shadow-sm'
+                : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <Users className="w-4 h-4" />
-            <span>Registered Stores & Login Credentials Directory ({filteredStores.length})</span>
+            <Building2 className="w-4 h-4" />
+            <span>Registered Stores & Merchant Directory ({stores.length})</span>
           </button>
 
           <button
             onClick={() => setActiveTab('payments')}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all border ${
+            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
               activeTab === 'payments'
-                ? 'bg-slate-900 text-cyan-400 border-cyan-500/40 shadow-glow-cyan'
-                : 'bg-transparent text-slate-400 border-transparent hover:text-slate-200'
+                ? 'bg-white text-[#4338CA] border border-indigo-200 shadow-sm'
+                : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <Receipt className="w-4 h-4" />
+            <CreditCard className="w-4 h-4" />
             <span>Payments & Billing Cycle Ledger ({payments.length})</span>
           </button>
         </div>
 
-        {/* ---------------- TAB CONTENT 1: STORES DIRECTORY ---------------- */}
+        {/* ================= TAB 1: STORE DIRECTORY ================= */}
         {activeTab === 'stores' && (
           <div className="space-y-4">
-            {/* Filter and Search Bar */}
-            <div className="flex flex-wrap items-center justify-between gap-3 p-4 rounded-2xl bg-slate-950 border border-slate-800">
+            {/* Search & Filter Toolbar */}
+            <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-4">
               <div className="relative w-full sm:w-80">
-                <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-3" />
+                <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-3" />
                 <input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search by store, owner, phone, city..."
-                  className="w-full bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+                  placeholder="Search by Store Name, Owner, Phone, City..."
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-3 py-2 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#4338CA] focus:bg-white"
                 />
               </div>
 
-              <div className="flex items-center gap-2">
-                <span className="text-xs text-slate-400">Category:</span>
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-slate-500">Category:</span>
                 <select
                   value={categoryFilter}
                   onChange={(e) => setCategoryFilter(e.target.value)}
-                  className="bg-slate-900 border border-slate-800 text-xs text-white rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-500"
+                  className="bg-slate-50 border border-slate-200 text-xs text-slate-800 rounded-xl px-3 py-2 focus:outline-none focus:border-[#4338CA] focus:bg-white"
                 >
-                  <option value="all">All Categories</option>
+                  <option value="all">All Business Sectors</option>
                   {allCategories.map((c) => (
                     <option key={c} value={c}>
                       {c}
@@ -331,195 +318,137 @@ export const AdminUsersPanel: React.FC<AdminUsersPanelProps> = ({
               </div>
             </div>
 
-            {/* Read-Only Directory Table */}
-            <div className="rounded-2xl border border-slate-800 bg-slate-950/80 overflow-hidden shadow-2xl">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-900/90 text-slate-400 uppercase tracking-wider text-[10px] font-bold border-b border-slate-800">
-                    <tr>
-                      <th className="px-4 py-3">Store Name</th>
-                      <th className="px-4 py-3">Owner Name</th>
-                      <th className="px-4 py-3">Login Phone (+91)</th>
-                      <th className="px-4 py-3">Login Email</th>
-                      <th className="px-4 py-3">City</th>
-                      <th className="px-4 py-3">Category</th>
-                      <th className="px-4 py-3">Registered Date</th>
-                      <th className="px-4 py-3">Last Login</th>
-                      <th className="px-4 py-3">Current Plan</th>
-                      <th className="px-4 py-3">Billing Cycle</th>
-                      <th className="px-4 py-3">Next Renewal</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800/80">
-                    {filteredStores.length === 0 ? (
-                      <tr>
-                        <td colSpan={11} className="px-4 py-12 text-center text-slate-500 text-xs">
-                          {loading ? 'Loading store profiles...' : 'No store profiles match your criteria.'}
-                        </td>
-                      </tr>
-                    ) : (
-                      filteredStores.map((store) => {
-                        const regFormatted = store.created_at
-                          ? new Date(store.created_at).toLocaleDateString('en-IN', {
-                              day: 'numeric',
-                              month: 'short',
-                              year: 'numeric',
-                            })
-                          : 'Recent';
-
-                        const lastLoginFormatted = store.last_login_at
-                          ? new Date(store.last_login_at).toLocaleString('en-IN', {
-                              day: 'numeric',
-                              month: 'short',
-                              hour: '2-digit',
-                              minute: '2-digit',
-                            })
-                          : 'N/A';
-
-                        const renewalFormatted = store.next_renewal_date
-                          ? new Date(store.next_renewal_date).toLocaleDateString('en-IN', {
-                              day: 'numeric',
-                              month: 'short',
-                              year: 'numeric',
-                            })
-                          : 'Active Beta';
-
-                        return (
-                          <tr key={store.id} className="hover:bg-slate-900/40 transition-colors">
-                            {/* Store Name */}
-                            <td className="px-4 py-3 font-bold text-white whitespace-nowrap">
-                              {store.store_name || 'Store'}
-                            </td>
-
-                            {/* Owner Name */}
-                            <td className="px-4 py-3 text-slate-200 whitespace-nowrap">
-                              {store.owner_name || 'Merchant'}
-                            </td>
-
-                            {/* Login Phone */}
-                            <td className="px-4 py-3 font-mono text-emerald-400 whitespace-nowrap">
-                              {store.phone || '—'}
-                            </td>
-
-                            {/* Login Email */}
-                            <td className="px-4 py-3 font-mono text-slate-300 text-[11px] whitespace-nowrap">
-                              {store.email || '—'}
-                            </td>
-
-                            {/* City */}
-                            <td className="px-4 py-3 text-slate-300 whitespace-nowrap">
-                              {store.city || 'India'}
-                            </td>
-
-                            {/* Business Category */}
-                            <td className="px-4 py-3 text-slate-400 whitespace-nowrap">
-                              {store.business_category || 'Retail'}
-                            </td>
-
-                            {/* Registered Date */}
-                            <td className="px-4 py-3 text-slate-400 whitespace-nowrap">
-                              {regFormatted}
-                            </td>
-
-                            {/* Last Login Timestamp */}
-                            <td className="px-4 py-3 font-mono text-cyan-300 text-[11px] whitespace-nowrap">
-                              {lastLoginFormatted}
-                            </td>
-
-                            {/* Current Plan */}
-                            <td className="px-4 py-3 whitespace-nowrap">
-                              <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 text-[11px] font-semibold border border-emerald-500/20">
-                                {store.plan_name || 'Launch Beta (All Modules)'}
-                              </span>
-                            </td>
-
-                            {/* Billing Cycle */}
-                            <td className="px-4 py-3 whitespace-nowrap font-mono text-slate-300">
-                              {store.billing_cycle || 'Free Beta'}
-                            </td>
-
-                            {/* Next Renewal Date */}
-                            <td className="px-4 py-3 whitespace-nowrap font-mono text-amber-300 text-[11px]">
-                              {renewalFormatted}
-                            </td>
-                          </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ---------------- TAB CONTENT 2: PAYMENTS LEDGER ---------------- */}
-        {activeTab === 'payments' && (
-          <div className="space-y-4">
-            <div className="rounded-2xl border border-slate-800 bg-slate-950/80 overflow-hidden shadow-2xl">
-              {payments.length === 0 ? (
-                /* Clean Empty State ready for webhook callbacks */
-                <div className="p-16 text-center space-y-4">
-                  <div className="w-12 h-12 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 mx-auto">
-                    <Receipt className="w-6 h-6" />
-                  </div>
-                  <div>
-                    <h3 className="text-base font-bold text-white">
-                      No Subscription Payments Recorded Yet
-                    </h3>
-                    <p className="mt-1 text-xs text-slate-400 max-w-md mx-auto leading-relaxed">
-                      All stores are currently activated under the free <strong>Launch Beta (All Modules)</strong> initiative.
-                      Ready to ingest Razorpay, Cashfree, or Stripe webhook callbacks directly into <code className="text-emerald-400 font-mono">public.subscription_payments</code>.
-                    </p>
-                  </div>
-                  <div className="pt-2">
-                    <span className="text-[11px] font-mono text-slate-500 bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800">
-                      Webhook Target: /api/billing/webhook
-                    </span>
-                  </div>
+            {/* Stores Table */}
+            <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-sm">
+              {loading ? (
+                <div className="p-16 text-center text-slate-500 text-xs flex items-center justify-center gap-2">
+                  <RefreshCw className="w-4 h-4 animate-spin text-[#4338CA]" />
+                  <span>Loading store directory...</span>
+                </div>
+              ) : filteredStores.length === 0 ? (
+                <div className="p-16 text-center text-slate-500 text-xs">
+                  No registered stores match your search query.
                 </div>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-xs">
-                    <thead className="bg-slate-900/90 text-slate-400 uppercase tracking-wider text-[10px] font-bold border-b border-slate-800">
+                    <thead className="bg-slate-50 text-slate-600 uppercase tracking-wider text-[10px] font-semibold border-b border-slate-200">
                       <tr>
-                        <th className="px-4 py-3">Store / Payer</th>
-                        <th className="px-4 py-3">Plan Purchased</th>
-                        <th className="px-4 py-3 text-right">Amount (₹)</th>
-                        <th className="px-4 py-3">Transaction ID</th>
-                        <th className="px-4 py-3">Payment Date</th>
-                        <th className="px-4 py-3">Billing Cycle</th>
-                        <th className="px-4 py-3">Status</th>
+                        <th className="px-4 py-3.5">Store & Merchant</th>
+                        <th className="px-4 py-3.5">Login Phone (+91)</th>
+                        <th className="px-4 py-3.5">Login Email</th>
+                        <th className="px-4 py-3.5">City / Sector</th>
+                        <th className="px-4 py-3.5">Registered Date</th>
+                        <th className="px-4 py-3.5">Last Login</th>
+                        <th className="px-4 py-3.5">Current Plan</th>
+                        <th className="px-4 py-3.5">Renewal Date</th>
                       </tr>
                     </thead>
-                    <tbody className="divide-y divide-slate-800/80">
-                      {payments.map((p) => (
-                        <tr key={p.id} className="hover:bg-slate-900/40 transition-colors">
-                          <td className="px-4 py-3 font-semibold text-white">
-                            {p.store_name || p.owner_name || p.store_id || 'Store Merchant'}
+                    <tbody className="divide-y divide-slate-100">
+                      {filteredStores.map((store) => (
+                        <tr key={store.id} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="px-4 py-3">
+                            <p className="font-bold text-[#0F172A]">{store.store_name || store.business_name || 'My Store'}</p>
+                            <p className="text-[11px] text-slate-500">{store.owner_name || store.full_name || 'Store Merchant'}</p>
                           </td>
-                          <td className="px-4 py-3 text-emerald-400 font-medium">
-                            {p.plan_purchased || 'Pro Plan'}
+                          <td className="px-4 py-3 font-mono text-slate-700">
+                            {store.phone || '—'}
                           </td>
-                          <td className="px-4 py-3 text-right font-mono font-bold text-white">
-                            ₹{Number(p.amount).toLocaleString('en-IN')}
-                          </td>
-                          <td className="px-4 py-3 font-mono text-slate-400 text-[11px]">
-                            {p.transaction_id}
-                          </td>
-                          <td className="px-4 py-3 text-slate-400">
-                            {new Date(p.payment_date).toLocaleDateString('en-IN', {
-                              day: 'numeric',
-                              month: 'short',
-                              year: 'numeric',
-                            })}
-                          </td>
-                          <td className="px-4 py-3 text-slate-300 font-mono">
-                            {p.billing_cycle || 'Monthly'}
+                          <td className="px-4 py-3 text-slate-600">
+                            {store.email || '—'}
                           </td>
                           <td className="px-4 py-3">
-                            <span className="px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 text-[10px] font-bold uppercase border border-emerald-500/20">
-                              {p.status}
+                            <span className="font-medium text-[#0F172A]">{store.city || 'India'}</span>
+                            <span className="block text-[10px] text-slate-500">{store.business_category || 'Retail'}</span>
+                          </td>
+                          <td className="px-4 py-3 text-slate-600">
+                            {store.created_at
+                              ? new Date(store.created_at).toLocaleDateString('en-IN', {
+                                  day: 'numeric',
+                                  month: 'short',
+                                  year: 'numeric',
+                                })
+                              : '—'}
+                          </td>
+                          <td className="px-4 py-3 text-slate-600">
+                            {store.last_login_at
+                              ? new Date(store.last_login_at).toLocaleString('en-IN', {
+                                  day: 'numeric',
+                                  month: 'short',
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })
+                              : 'Never logged in'}
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-teal-50 text-[#0D9488] border border-teal-200 font-mono">
+                              {store.plan_name || 'Launch Beta (All Modules)'}
+                            </span>
+                          </td>
+                          <td className="px-4 py-3 font-mono text-slate-600 text-[11px]">
+                            {store.next_renewal_date
+                              ? new Date(store.next_renewal_date).toLocaleDateString('en-IN', {
+                                  day: 'numeric',
+                                  month: 'short',
+                                  year: 'numeric',
+                                })
+                              : '1 Year Free Beta'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ================= TAB 2: PAYMENTS & BILLING LEDGER ================= */}
+        {activeTab === 'payments' && (
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-sm">
+              {loading ? (
+                <div className="p-16 text-center text-slate-500 text-xs flex items-center justify-center gap-2">
+                  <RefreshCw className="w-4 h-4 animate-spin text-[#4338CA]" />
+                  <span>Loading payments ledger...</span>
+                </div>
+              ) : payments.length === 0 ? (
+                <div className="p-16 text-center space-y-3">
+                  <div className="w-12 h-12 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-[#4338CA] mx-auto">
+                    <Receipt className="w-6 h-6" />
+                  </div>
+                  <h3 className="text-base font-bold text-[#0F172A]">No paid subscription transactions yet</h3>
+                  <p className="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed">
+                    All stores are currently activated on the 100% Free Launch Beta plan. Real payment gateway webhooks (Razorpay / Cashfree) will log directly into <code className="text-[#4338CA] font-mono">public.subscription_payments</code> here.
+                  </p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead className="bg-slate-50 text-slate-600 uppercase tracking-wider text-[10px] font-semibold border-b border-slate-200">
+                      <tr>
+                        <th className="px-4 py-3.5">Store ID</th>
+                        <th className="px-4 py-3.5">Plan Purchased</th>
+                        <th className="px-4 py-3.5">Amount (₹)</th>
+                        <th className="px-4 py-3.5">Billing Cycle</th>
+                        <th className="px-4 py-3.5">Transaction ID</th>
+                        <th className="px-4 py-3.5">Payment Date</th>
+                        <th className="px-4 py-3.5">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {payments.map((pay) => (
+                        <tr key={pay.id} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="px-4 py-3 font-mono text-[#4338CA]">{pay.store_id}</td>
+                          <td className="px-4 py-3 font-semibold text-[#0F172A]">{pay.plan_purchased || 'Launch Beta'}</td>
+                          <td className="px-4 py-3 font-mono font-bold text-[#0F172A]">₹{pay.amount}</td>
+                          <td className="px-4 py-3 text-slate-700">{pay.billing_cycle}</td>
+                          <td className="px-4 py-3 font-mono text-slate-500">{pay.transaction_id || '—'}</td>
+                          <td className="px-4 py-3 text-slate-600">{new Date(pay.payment_date).toLocaleDateString('en-IN')}</td>
+                          <td className="px-4 py-3">
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-teal-50 text-[#0D9488] border border-teal-200">
+                              {pay.status}
                             </span>
                           </td>
                         </tr>
@@ -533,9 +462,9 @@ export const AdminUsersPanel: React.FC<AdminUsersPanelProps> = ({
         )}
       </main>
 
-      {/* ================= HQ FOOTER ================= */}
-      <footer className="border-t border-slate-900 py-4 text-center text-[11px] text-slate-500">
-        Nivo POS HQ Command Center • Founder SaaS Intelligence Console • Confirmed Root Administrator
+      {/* ================= FOOTER ================= */}
+      <footer className="border-t border-slate-200 bg-white py-4 text-center text-[11px] text-slate-500">
+        Nivo POS HQ Command Center • Founder Eyes Only • Strict Access Policy Enforced
       </footer>
     </div>
   );

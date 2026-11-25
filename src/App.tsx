@@ -5,7 +5,7 @@ import { LandingPage } from './pages/LandingPage';
 import { DashboardShell } from './pages/DashboardShell';
 import { AdminUsersPanel } from './pages/AdminUsersPanel';
 import { AuthModal } from './components/AuthModal';
-import { Store, ShieldAlert, ArrowLeft, Loader2, Lock, Building2 } from 'lucide-react';
+import { Store, ShieldAlert, ArrowLeft, Loader2, Lock } from 'lucide-react';
 
 export function App() {
   const [currentUser, setCurrentUser] = useState<any>(null);
@@ -254,12 +254,10 @@ export function App() {
   // Loading skeleton while checking session
   if (authLoading || hqChecking) {
     return (
-      <div className="min-h-screen bg-[#070A11] flex items-center justify-center text-slate-400">
+      <div className="min-h-screen bg-[#F4F6F9] flex items-center justify-center text-slate-600">
         <div className="flex flex-col items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500 to-cyan-500 p-[1.5px] animate-pulse">
-            <div className="w-full h-full bg-[#070A11] rounded-[10px] flex items-center justify-center">
-              <Store className="w-5 h-5 text-emerald-400" />
-            </div>
+          <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-[#4338CA] shadow-sm animate-pulse">
+            <Store className="w-5 h-5 text-[#4338CA]" />
           </div>
           <span className="text-xs font-mono tracking-wider text-slate-500">
             CONNECTING TO NIVOPOS.IN...
@@ -274,20 +272,20 @@ export function App() {
     // 1A. If an unauthorized sign-out just occurred
     if (hqUnauthorizedMsg) {
       return (
-        <div className="min-h-screen bg-[#070A11] text-slate-100 flex flex-col items-center justify-center p-6 text-center">
-          <div className="max-w-md w-full p-8 rounded-3xl bg-slate-950 border border-rose-900/40 shadow-2xl space-y-4">
-            <div className="w-12 h-12 rounded-2xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400 mx-auto">
+        <div className="min-h-screen bg-[#F4F6F9] text-slate-800 flex flex-col items-center justify-center p-6 text-center">
+          <div className="max-w-md w-full p-8 rounded-3xl bg-white border border-rose-200 shadow-xl space-y-4">
+            <div className="w-12 h-12 rounded-2xl bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-600 mx-auto">
               <ShieldAlert className="w-6 h-6" />
             </div>
-            <h2 className="text-xl font-black text-white">Unauthorized HQ Access</h2>
-            <p className="text-xs text-rose-300 leading-relaxed">{hqUnauthorizedMsg}</p>
-            <div className="pt-4 border-t border-slate-800">
+            <h2 className="text-xl font-bold text-[#0F172A]">Unauthorized HQ Access</h2>
+            <p className="text-xs text-rose-700 leading-relaxed">{hqUnauthorizedMsg}</p>
+            <div className="pt-4 border-t border-slate-200">
               <button
                 onClick={() => {
                   setHqUnauthorizedMsg(null);
                   navigateTo('/');
                 }}
-                className="w-full py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-200 text-xs font-bold border border-slate-700 flex items-center justify-center gap-2 transition-all"
+                className="w-full py-2.5 rounded-xl bg-[#4338CA] hover:bg-[#3730A3] text-white text-xs font-bold border border-[#4338CA] flex items-center justify-center gap-2 transition-all shadow-sm"
               >
                 <ArrowLeft className="w-4 h-4" />
                 <span>Return to nivopos.in</span>
@@ -301,22 +299,24 @@ export function App() {
     // 1B. If not logged in on /hq-admin -> Show Founder Login Gate
     if (!currentUser) {
       return (
-        <div className="min-h-screen bg-[#070A11] text-slate-100 flex flex-col items-center justify-center p-6 text-center bg-grid-pattern">
-          <div className="max-w-md w-full p-8 rounded-3xl bg-[#0B1120] border border-slate-800 shadow-2xl space-y-5">
-            <div className="w-12 h-12 rounded-2xl bg-cyan-500/10 border border-cyan-500/30 flex items-center justify-center text-cyan-400 mx-auto shadow-glow-cyan">
+        <div className="min-h-screen bg-[#F4F6F9] text-slate-800 flex flex-col items-center justify-center p-6 text-center">
+          <div className="max-w-md w-full p-8 rounded-3xl bg-white border border-slate-200 shadow-xl space-y-5">
+            <div className="w-12 h-12 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-[#4338CA] mx-auto shadow-sm">
               <Lock className="w-6 h-6" />
             </div>
             <div>
-              <h2 className="text-xl font-black text-white">Nivo POS HQ Command Center</h2>
-              <p className="text-xs text-slate-400 mt-1">
+              <h2 className="text-xl font-bold text-[#0F172A]">Nivo POS HQ Command Center</h2>
+              <p className="text-xs text-slate-500 mt-1">
                 Restricted to authorized founders and HQ operations. Requires verified record in{' '}
-                <code className="text-cyan-400 font-mono">public.hq_admins</code>.
+                <code className="text-[#4338CA] font-mono bg-slate-50 px-1 py-0.5 rounded border border-slate-200">
+                  public.hq_admins
+                </code>.
               </p>
             </div>
 
             <button
               onClick={() => setHqAuthModalOpen(true)}
-              className="w-full py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-slate-950 font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-glow-cyan"
+              className="w-full py-3 rounded-xl bg-[#4338CA] hover:bg-[#3730A3] text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-sm"
             >
               <span>Authenticate as HQ Admin</span>
             </button>
@@ -324,7 +324,7 @@ export function App() {
             <div className="pt-2">
               <button
                 onClick={() => navigateTo('/')}
-                className="text-xs text-slate-500 hover:text-slate-300 underline"
+                className="text-xs text-slate-500 hover:text-slate-800 underline"
               >
                 ← Back to public storefront (nivopos.in)
               </button>
@@ -353,8 +353,8 @@ export function App() {
 
     // Fallback loading / checking
     return (
-      <div className="min-h-screen bg-[#070A11] flex items-center justify-center text-slate-400 text-xs">
-        <Loader2 className="w-5 h-5 animate-spin text-cyan-400 mr-2" />
+      <div className="min-h-screen bg-[#F4F6F9] flex items-center justify-center text-slate-500 text-xs">
+        <Loader2 className="w-5 h-5 animate-spin text-[#4338CA] mr-2" />
         <span>Verifying HQ Admin Credentials...</span>
       </div>
     );

@@ -601,14 +601,14 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
               {/* Dynamic Preview Box based on Toggle */}
               {billReceiptFormat === 'whatsapp' ? (
-                <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-950 space-y-1 font-sans">
-                  <div className="flex items-center gap-1.5 text-emerald-800 font-bold mb-1">
+                <div className="p-4 rounded-xl bg-teal-50 border border-teal-200 text-xs text-teal-950 space-y-1 font-sans">
+                  <div className="flex items-center gap-1.5 text-teal-800 font-bold mb-1">
                     <Share2 className="w-3.5 h-3.5" />
                     <span>WhatsApp Message Preview</span>
                   </div>
                   <p className="font-semibold">🧾 TAX INVOICE - Sharma Super Mart</p>
-                  <p className="text-[11px] text-emerald-800">Bill #8942 • Total: ₹408.00</p>
-                  <p className="text-[10px] text-emerald-700 italic">"Thank you for shopping! Tap to view full PDF bill."</p>
+                  <p className="text-[11px] text-teal-800">Bill #8942 • Total: ₹408.00</p>
+                  <p className="text-[10px] text-teal-700 italic">"Thank you for shopping! Tap to view full PDF bill."</p>
                 </div>
               ) : (
                 <div className="p-4 rounded-xl bg-slate-50 border border-slate-300 text-xs font-mono text-slate-800 space-y-1">
@@ -740,12 +740,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({
               </div>
 
               {snapUploaded ? (
-                <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs space-y-2">
-                  <p className="font-bold text-emerald-950 flex items-center gap-1.5">
-                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                <div className="p-3.5 rounded-xl bg-teal-50 border border-teal-200 text-xs space-y-2">
+                  <p className="font-bold text-teal-950 flex items-center gap-1.5">
+                    <CheckCircle2 className="w-4 h-4 text-teal-600" />
                     <span>3 Items Parsed into Catalog</span>
                   </p>
-                  <div className="space-y-1 text-[11px] text-emerald-800 font-mono">
+                  <div className="space-y-1 text-[11px] text-teal-800 font-mono">
                     <p>• Parle-G 1kg @ MRP ₹100 (5% GST)</p>
                     <p>• Madhur Sugar 5kg @ MRP ₹240 (5% GST)</p>
                     <p>• Tata Tea Gold 250g @ MRP ₹160 (5% GST)</p>

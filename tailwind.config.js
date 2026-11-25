@@ -21,17 +21,6 @@ export default {
           amber: '#D97706',
           rose: '#E11D48',
         },
-        // Backward-compatibility references
-        brand: {
-          dark: '#070A11',
-          slate: '#0B1120',
-          card: '#0F172A',
-          border: '#1E293B',
-          muted: '#64748B',
-          emerald: '#10B981',
-          cyan: '#06B6D4',
-          accent: '#00F5A0',
-        },
       },
       fontFamily: {
         sans: [

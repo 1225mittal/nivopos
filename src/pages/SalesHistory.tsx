@@ -410,7 +410,7 @@ export const SalesHistory: React.FC<SalesHistoryProps> = ({
 
       {/* ================= MODAL: VIEW INVOICE & REPRINT ================= */}
       {selectedInvoice && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-800/40 backdrop-blur-sm overflow-y-auto">
           <div className="relative w-full max-w-md bg-white text-slate-900 rounded-3xl p-6 sm:p-8 shadow-2xl my-auto space-y-5 border border-slate-200">
             {/* Action Bar (Hidden during print) */}
             <div className="no-print flex items-center justify-between pb-3 border-b border-slate-200">
