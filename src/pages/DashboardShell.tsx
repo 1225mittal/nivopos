@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import {
   Store,
   CreditCard,
@@ -29,25 +29,28 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
   onSignOut,
 }) => {
   const [activeTab, setActiveTab] = useState<ActiveTab>('pos');
-  const [localProfile, setLocalProfile] = useState<StoreProfile | null>(userProfile);
+  const [editedProfile, setEditedProfile] = useState<StoreProfile | null>(null);
 
-  // Sync when prop updates
-  React.useEffect(() => {
-    setLocalProfile(userProfile);
-  }, [userProfile]);
+  // Derive active profile directly without runaway useEffect syncing
+  const activeProfile = editedProfile || userProfile;
 
   const businessName =
-    localProfile?.business_name ||
-    localProfile?.store_name ||
+    activeProfile?.business_name ||
+    activeProfile?.store_name ||
     currentUser?.user_metadata?.store_name ||
     'My Store';
 
   const city =
-    localProfile?.city ||
+    activeProfile?.city ||
     currentUser?.user_metadata?.city ||
     'India';
 
-  const planName = localProfile?.plan_name || 'Launch Beta (All Modules)';
+  const planName = activeProfile?.plan_name || 'Launch Beta (All Modules)';
+
+  // Memoized navigation callbacks to prevent downstream re-renders
+  const navigateToProducts = useCallback(() => setActiveTab('products'), []);
+  const navigateToSettings = useCallback(() => setActiveTab('settings'), []);
+  const navigateToPos = useCallback(() => setActiveTab('pos'), []);
 
   return (
     <div className="min-h-screen bg-[#F4F6F9] text-slate-800 flex flex-col justify-between selection:bg-indigo-500/20 selection:text-indigo-700">
@@ -160,40 +163,40 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
         {activeTab === 'pos' && (
           <PosBilling
             currentUser={currentUser}
-            userProfile={localProfile}
-            onNavigateToProducts={() => setActiveTab('products')}
-            onNavigateToSettings={() => setActiveTab('settings')}
+            userProfile={activeProfile}
+            onNavigateToProducts={navigateToProducts}
+            onNavigateToSettings={navigateToSettings}
           />
         )}
 
         {activeTab === 'products' && (
           <ProductsCatalog
             currentUser={currentUser}
-            onNavigateToPos={() => setActiveTab('pos')}
+            onNavigateToPos={navigateToPos}
           />
         )}
 
         {activeTab === 'purchase-bills' && (
           <PurchaseBills
             currentUser={currentUser}
-            userProfile={localProfile}
-            onNavigateToProducts={() => setActiveTab('products')}
+            userProfile={activeProfile}
+            onNavigateToProducts={navigateToProducts}
           />
         )}
 
         {activeTab === 'sales' && (
           <SalesHistory
             currentUser={currentUser}
-            userProfile={localProfile}
-            onNavigateToPos={() => setActiveTab('pos')}
+            userProfile={activeProfile}
+            onNavigateToPos={navigateToPos}
           />
         )}
 
         {activeTab === 'settings' && (
           <StoreSettings
             currentUser={currentUser}
-            userProfile={localProfile}
-            onProfileUpdated={(updated) => setLocalProfile(updated)}
+            userProfile={activeProfile}
+            onProfileUpdated={(updated) => setEditedProfile(updated)}
           />
         )}
       </main>

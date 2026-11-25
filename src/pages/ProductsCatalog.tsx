@@ -88,8 +88,10 @@ export const ProductsCatalog: React.FC<ProductsCatalogProps> = ({
   };
 
   useEffect(() => {
-    fetchProducts();
-  }, [currentUser.id]);
+    if (currentUser?.id) {
+      fetchProducts();
+    }
+  }, [currentUser?.id]);
 
   const openAddModal = () => {
     setEditingProduct(null);

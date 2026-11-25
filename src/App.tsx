@@ -36,90 +36,67 @@ export function App() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
-  // Update last_login_at and ensure active owner status in public.store_profiles
-  const recordStoreLogin = useCallback(async (user: any) => {
+  // Fetch or refresh store profile from public.store_profiles and ensure active owner status
+  const fetchAndSyncProfile = useCallback(async (user: any) => {
+    if (!user?.id) return;
     try {
       const now = new Date().toISOString();
       const nextYear = new Date();
       nextYear.setFullYear(nextYear.getFullYear() + 1);
 
-      // Attempt to update last_login_at and enforce owner access
       const { data, error } = await supabase
         .from('store_profiles')
-        .update({
-          role: 'owner',
-          is_approved: true,
-          plan_name: 'Launch Beta (All Modules)',
-          subscription_status: 'active',
-          last_login_at: now,
-          updated_at: now,
-        })
-        .eq('id', user.id)
         .select('*')
+        .eq('id', user.id)
         .maybeSingle();
 
       if (error) {
-        console.warn('[Nivo POS] store_profiles update note:', error.message);
+        console.warn('[Nivo POS] Error fetching store profile:', error.message);
       }
 
       if (data) {
         setUserProfile(data);
-      }
-    } catch (err) {
-      console.error('[Nivo POS] Error updating last_login_at:', err);
-    }
-  }, []);
-
-  // Fetch or refresh store profile from public.store_profiles
-  const fetchProfile = useCallback(
-    async (userId: string) => {
-      try {
-        const { data, error } = await supabase
+        // Non-blocking background sync of last_login_at
+        supabase
           .from('store_profiles')
-          .select('*')
-          .eq('id', userId)
-          .maybeSingle();
-
-        if (error) {
-          console.warn('[Nivo POS] Error fetching store profile:', error.message);
-        }
-
-        if (data) {
-          setUserProfile(data);
-        } else {
-          // If no row exists yet, create one with instant owner access
-          const now = new Date().toISOString();
-          const nextYear = new Date();
-          nextYear.setFullYear(nextYear.getFullYear() + 1);
-
-          const defaultProfile: StoreProfile = {
-            id: userId,
-            owner_name: currentUser?.user_metadata?.full_name || 'Store Owner',
-            store_name: currentUser?.user_metadata?.store_name || 'My Store',
-            phone: currentUser?.phone || currentUser?.user_metadata?.phone || '',
-            email: currentUser?.email || '',
-            city: currentUser?.user_metadata?.city || 'India',
-            business_category:
-              currentUser?.user_metadata?.business_category || 'Kirana & Grocery',
+          .update({
             role: 'owner',
             is_approved: true,
             plan_name: 'Launch Beta (All Modules)',
             subscription_status: 'active',
-            billing_cycle: 'Free Beta',
-            next_renewal_date: nextYear.toISOString(),
             last_login_at: now,
             updated_at: now,
-          };
+          })
+          .eq('id', user.id)
+          .then(() => {});
+      } else {
+        // If no row exists yet, create one with instant owner access
+        const defaultProfile: StoreProfile = {
+          id: user.id,
+          owner_name: user?.user_metadata?.full_name || 'Store Owner',
+          store_name: user?.user_metadata?.store_name || 'My Store',
+          phone: user?.phone || user?.user_metadata?.phone || '',
+          email: user?.email || '',
+          city: user?.user_metadata?.city || 'India',
+          business_category:
+            user?.user_metadata?.business_category || 'Kirana & Grocery',
+          role: 'owner',
+          is_approved: true,
+          plan_name: 'Launch Beta (All Modules)',
+          subscription_status: 'active',
+          billing_cycle: 'Free Beta',
+          next_renewal_date: nextYear.toISOString(),
+          last_login_at: now,
+          updated_at: now,
+        };
 
-          await supabase.from('store_profiles').upsert(defaultProfile);
-          setUserProfile(defaultProfile);
-        }
-      } catch (err) {
-        console.error('[Nivo POS] Exception fetching profile:', err);
+        await supabase.from('store_profiles').upsert(defaultProfile);
+        setUserProfile(defaultProfile);
       }
-    },
-    [currentUser]
-  );
+    } catch (err) {
+      console.error('[Nivo POS] Exception fetching profile:', err);
+    }
+  }, []);
 
   // Check HQ Admin Authorization: ONLY by checking public.hq_admins (user_id = session.user.id and is_active = true)
   const verifyHQAdminAccess = useCallback(async (user: any) => {
@@ -167,14 +144,17 @@ export function App() {
     }
   }, []);
 
-  // Listen to Supabase auth state changes
+  // Listen to Supabase auth state changes exactly once on mount
   useEffect(() => {
+    let isMounted = true;
+
+    // Check existing session once
     supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!isMounted) return;
       const user = session?.user ?? null;
       setCurrentUser(user);
       if (user) {
-        recordStoreLogin(user);
-        fetchProfile(user.id);
+        fetchAndSyncProfile(user);
         if (window.location.pathname.startsWith('/hq-admin')) {
           verifyHQAdminAccess(user);
         }
@@ -182,18 +162,18 @@ export function App() {
       setAuthLoading(false);
     });
 
+    // Listen for auth changes
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!isMounted) return;
       const user = session?.user ?? null;
       setCurrentUser(user);
 
       if (user) {
         if (event === 'SIGNED_IN') {
-          await recordStoreLogin(user);
+          await fetchAndSyncProfile(user);
         }
-        await fetchProfile(user.id);
-
         if (window.location.pathname.startsWith('/hq-admin')) {
           await verifyHQAdminAccess(user);
         }
@@ -205,9 +185,10 @@ export function App() {
     });
 
     return () => {
+      isMounted = false;
       subscription.unsubscribe();
     };
-  }, [fetchProfile, recordStoreLogin, verifyHQAdminAccess]);
+  }, [fetchAndSyncProfile, verifyHQAdminAccess]);
 
   // Handle URL change when on /hq-admin vs /
   const navigateTo = (path: string) => {
@@ -225,8 +206,7 @@ export function App() {
 
   const handleAuthSuccess = async (user: any) => {
     setCurrentUser(user);
-    await recordStoreLogin(user);
-    await fetchProfile(user.id);
+    await fetchAndSyncProfile(user);
 
     if (currentPath.startsWith('/hq-admin')) {
       await verifyHQAdminAccess(user);
@@ -247,7 +227,7 @@ export function App() {
 
   const handleRefreshProfile = async () => {
     if (currentUser?.id) {
-      await fetchProfile(currentUser.id);
+      await fetchAndSyncProfile(currentUser);
     }
   };
 

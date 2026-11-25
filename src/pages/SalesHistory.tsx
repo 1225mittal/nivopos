@@ -65,8 +65,10 @@ export const SalesHistory: React.FC<SalesHistoryProps> = ({
   };
 
   useEffect(() => {
-    fetchInvoices();
-  }, [currentUser.id]);
+    if (currentUser?.id) {
+      fetchInvoices();
+    }
+  }, [currentUser?.id]);
 
   // Load line items when an invoice is clicked
   const handleSelectInvoice = async (inv: Invoice) => {

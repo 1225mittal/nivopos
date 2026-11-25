@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   ScanLine,
   Search,
@@ -49,6 +49,38 @@ interface PosBillingProps {
   onNavigateToSettings: () => void;
 }
 
+// Pure helper to compute line item values based on tax mode (zero allocations during re-renders)
+const calculateItemValues = (
+  price: number,
+  qty: number,
+  gstRate: number,
+  mode: 'inclusive' | 'exclusive'
+) => {
+  const safePrice = Number(price) || 0;
+  const safeQty = Number(qty) || 0;
+  const safeGst = Number(gstRate) || 0;
+
+  if (mode === 'inclusive') {
+    const lineTotal = safePrice * safeQty;
+    const taxable = safeGst > 0 ? lineTotal / (1 + safeGst / 100) : lineTotal;
+    const gst = lineTotal - taxable;
+    return {
+      taxable_amount: Math.round(taxable * 100) / 100,
+      gst_amount: Math.round(gst * 100) / 100,
+      line_total: Math.round(lineTotal * 100) / 100,
+    };
+  } else {
+    const taxable = safePrice * safeQty;
+    const gst = (taxable * safeGst) / 100;
+    const lineTotal = taxable + gst;
+    return {
+      taxable_amount: Math.round(taxable * 100) / 100,
+      gst_amount: Math.round(gst * 100) / 100,
+      line_total: Math.round(lineTotal * 100) / 100,
+    };
+  }
+};
+
 export const PosBilling: React.FC<PosBillingProps> = ({
   currentUser,
   userProfile,
@@ -97,50 +129,9 @@ export const PosBilling: React.FC<PosBillingProps> = ({
   // Modal WhatsApp Phone Input
   const [modalPhone, setModalPhone] = useState('');
 
-  // Helper to compute line item values based on tax mode
-  const calculateItemValues = (
-    price: number,
-    qty: number,
-    gstRate: number,
-    mode: 'inclusive' | 'exclusive'
-  ) => {
-    if (mode === 'inclusive') {
-      const lineTotal = price * qty;
-      const taxable = lineTotal / (1 + gstRate / 100);
-      const gst = lineTotal - taxable;
-      return {
-        taxable_amount: Math.round(taxable * 100) / 100,
-        gst_amount: Math.round(gst * 100) / 100,
-        line_total: Math.round(lineTotal * 100) / 100,
-      };
-    } else {
-      const taxable = price * qty;
-      const gst = (taxable * gstRate) / 100;
-      const lineTotal = taxable + gst;
-      return {
-        taxable_amount: Math.round(taxable * 100) / 100,
-        gst_amount: Math.round(gst * 100) / 100,
-        line_total: Math.round(lineTotal * 100) / 100,
-      };
-    }
-  };
-
-  // Toggle Tax Mode and recalculate all cart items
-  const handleToggleTaxMode = (newMode: 'inclusive' | 'exclusive') => {
-    setTaxMode(newMode);
-    setCart((prev) =>
-      prev.map((item) => {
-        const vals = calculateItemValues(item.price, item.qty, item.gst_rate, newMode);
-        return {
-          ...item,
-          ...vals,
-        };
-      })
-    );
-  };
-
-  // Fetch only this store's real products
-  const fetchProducts = async () => {
+  // Fetch only this store's real products - stable callback scoped to currentUser.id
+  const fetchProducts = useCallback(async () => {
+    if (!currentUser?.id) return;
     try {
       setLoadingProducts(true);
       const { data, error } = await supabase
@@ -156,70 +147,103 @@ export const PosBilling: React.FC<PosBillingProps> = ({
     } finally {
       setLoadingProducts(false);
     }
-  };
+  }, [currentUser?.id]);
 
   useEffect(() => {
     fetchProducts();
-  }, [currentUser.id]);
+  }, [fetchProducts]);
 
-  // Handle Barcode Scan / Enter key
-  const handleBarcodeKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Enter') {
-      e.preventDefault();
-      const val = searchInput.trim();
-      if (!val) return;
-
-      // Check if exact barcode matches
-      const exactMatch = storeProducts.find(
-        (p) => p.barcode && p.barcode.toLowerCase() === val.toLowerCase()
-      );
-
-      if (exactMatch) {
-        addItemToCart(exactMatch);
-        setSearchInput('');
-        setShowDropdown(false);
-      } else {
-        // If not exact barcode, check if only 1 product matches search
-        const matches = storeProducts.filter((p) =>
-          p.name.toLowerCase().includes(val.toLowerCase())
-        );
-        if (matches.length === 1) {
-          addItemToCart(matches[0]);
-          setSearchInput('');
-          setShowDropdown(false);
-        } else {
-          setShowDropdown(true);
-        }
+  // Update Item Qty
+  const updateItemQty = useCallback(
+    (cartId: string, newQty: number) => {
+      if (newQty <= 0) {
+        setCart((prev) => prev.filter((item) => item.cart_id !== cartId));
+        return;
       }
+
+      setCart((prev) =>
+        prev.map((item) => {
+          if (item.cart_id !== cartId) return item;
+          const vals = calculateItemValues(item.price, newQty, item.gst_rate, taxMode);
+          return {
+            ...item,
+            qty: newQty,
+            ...vals,
+          };
+        })
+      );
+    },
+    [taxMode]
+  );
+
+  // Remove Item
+  const removeItemFromCart = useCallback((cartId: string) => {
+    setCart((prev) => prev.filter((item) => item.cart_id !== cartId));
+  }, []);
+
+  // Clear Cart
+  const handleClearCart = useCallback(() => {
+    if (cart.length === 0) return;
+    if (window.confirm('Clear all items in the active bill?')) {
+      setCart([]);
+      setDiscountInput('');
+      setCustomerName('');
+      setCustomerPhone('');
     }
-  };
+  }, [cart.length]);
+
+  // Toggle Tax Mode and recalculate all cart items
+  const handleToggleTaxMode = useCallback(
+    (newMode: 'inclusive' | 'exclusive') => {
+      setTaxMode(newMode);
+      setCart((prev) =>
+        prev.map((item) => {
+          const vals = calculateItemValues(item.price, item.qty, item.gst_rate, newMode);
+          return {
+            ...item,
+            ...vals,
+          };
+        })
+      );
+    },
+    []
+  );
 
   // Add catalog product to cart
-  const addItemToCart = (p: Product) => {
-    const existingIndex = cart.findIndex((item) => item.product_id === p.id);
+  const addItemToCart = useCallback(
+    (p: Product) => {
+      setCart((prev) => {
+        const existingIndex = prev.findIndex((item) => item.product_id === p.id);
 
-    if (existingIndex > -1) {
-      // Increase qty
-      updateItemQty(cart[existingIndex].cart_id, cart[existingIndex].qty + 1);
-    } else {
-      const price = Number(p.selling_price) || 0;
-      const gstRate = Number(p.gst_rate) || 0;
-      const vals = calculateItemValues(price, 1, gstRate, taxMode);
+        if (existingIndex > -1) {
+          const existing = prev[existingIndex];
+          const newQty = existing.qty + 1;
+          const vals = calculateItemValues(existing.price, newQty, existing.gst_rate, taxMode);
+          return prev.map((item, idx) =>
+            idx === existingIndex ? { ...item, qty: newQty, ...vals } : item
+          );
+        } else {
+          const price = Number(p.selling_price) || 0;
+          const gstRate = Number(p.gst_rate) || 0;
+          const vals = calculateItemValues(price, 1, gstRate, taxMode);
 
-      const newItem: CartItem = {
-        cart_id: Date.now().toString() + Math.random().toString().slice(-4),
-        product_id: p.id,
-        name: p.name,
-        unit: p.unit || 'pcs',
-        price: price,
-        qty: 1,
-        gst_rate: gstRate,
-        ...vals,
-      };
+          const newItem: CartItem = {
+            cart_id: Date.now().toString() + Math.random().toString().slice(-4),
+            product_id: p.id,
+            name: p.name || 'Unnamed Product',
+            unit: p.unit || 'pcs',
+            price: price,
+            qty: 1,
+            gst_rate: gstRate,
+            ...vals,
+          };
 
-      setCart((prev) => [newItem, ...prev]);
-    }
-  };
+          return [newItem, ...prev];
+        }
+      });
+    },
+    [taxMode]
+  );
 
   // Add custom unlisted item
   const handleAddCustomItem = (e: React.FormEvent) => {
@@ -249,53 +273,49 @@ export const PosBilling: React.FC<PosBillingProps> = ({
     setCustomQty(1);
   };
 
-  // Update Item Qty
-  const updateItemQty = (cartId: string, newQty: number) => {
-    if (newQty <= 0) {
-      removeItemFromCart(cartId);
-      return;
-    }
+  // Handle Barcode Scan / Enter key
+  const handleBarcodeKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      const val = searchInput.trim();
+      if (!val) return;
 
-    setCart((prev) =>
-      prev.map((item) => {
-        if (item.cart_id !== cartId) return item;
-        const vals = calculateItemValues(item.price, newQty, item.gst_rate, taxMode);
-        return {
-          ...item,
-          qty: newQty,
-          ...vals,
-        };
-      })
-    );
-  };
+      // Check if exact barcode matches
+      const exactMatch = storeProducts.find(
+        (p) => p.barcode && String(p.barcode).toLowerCase() === val.toLowerCase()
+      );
 
-  // Remove Item
-  const removeItemFromCart = (cartId: string) => {
-    setCart((prev) => prev.filter((item) => item.cart_id !== cartId));
-  };
-
-  // Clear Cart
-  const handleClearCart = () => {
-    if (cart.length === 0) return;
-    if (window.confirm('Clear all items in the active bill?')) {
-      setCart([]);
-      setDiscountInput('');
-      setCustomerName('');
-      setCustomerPhone('');
+      if (exactMatch) {
+        addItemToCart(exactMatch);
+        setSearchInput('');
+        setShowDropdown(false);
+      } else {
+        // If not exact barcode, check if only 1 product matches search
+        const matches = storeProducts.filter((p) =>
+          p.name ? String(p.name).toLowerCase().includes(val.toLowerCase()) : false
+        );
+        if (matches.length === 1) {
+          addItemToCart(matches[0]);
+          setSearchInput('');
+          setShowDropdown(false);
+        } else {
+          setShowDropdown(true);
+        }
+      }
     }
   };
 
   // Live Bill Calculations
   const taxableSubtotal = useMemo(() => {
-    return cart.reduce((acc, item) => acc + item.taxable_amount, 0);
+    return cart.reduce((acc, item) => acc + (Number(item.taxable_amount) || 0), 0);
   }, [cart]);
 
   const rawSubtotal = useMemo(() => {
-    return cart.reduce((acc, item) => acc + item.line_total, 0);
+    return cart.reduce((acc, item) => acc + (Number(item.line_total) || 0), 0);
   }, [cart]);
 
   const totalGst = useMemo(() => {
-    return cart.reduce((acc, item) => acc + item.gst_amount, 0);
+    return cart.reduce((acc, item) => acc + (Number(item.gst_amount) || 0), 0);
   }, [cart]);
 
   const discount = Number(discountInput) || 0;
@@ -307,16 +327,17 @@ export const PosBilling: React.FC<PosBillingProps> = ({
   const cgst = Math.round((totalGst / 2) * 100) / 100;
   const sgst = cgst;
 
-  // Real Dynamic UPI Payment Deep Link
+  // Real Dynamic UPI Payment Deep Link (memoized to prevent re-parsing during renders)
   const upiId = userProfile?.upi_id || '';
   const businessName = userProfile?.business_name || userProfile?.store_name || 'Nivo Store';
-  const upiPayUrl = upiId
-    ? `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(
+  const upiPayUrl = useMemo(() => {
+    if (!upiId) return '';
+    const safeAmount = isNaN(grandTotal) || grandTotal < 0 ? '0.00' : grandTotal.toFixed(2);
+    const invoiceNum = completedInvoice?.invoice_number || 'INV';
+    return `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(
       businessName
-    )}&am=${grandTotal.toFixed(2)}&cu=INR&tn=${encodeURIComponent(
-      'Bill ' + (completedInvoice?.invoice_number || 'INV')
-    )}`
-    : '';
+    )}&am=${safeAmount}&cu=INR&tn=${encodeURIComponent('Bill ' + invoiceNum)}`;
+  }, [upiId, businessName, grandTotal, completedInvoice?.invoice_number]);
 
   const handleCopyUpiLink = () => {
     if (!upiPayUrl) return;
@@ -474,16 +495,16 @@ export const PosBilling: React.FC<PosBillingProps> = ({
     window.open(url, '_blank');
   };
 
-  // Filtered product suggestions for search
+  // Filtered product suggestions for search (null-safe and type-safe)
   const filteredProducts = useMemo(() => {
-    if (!searchInput.trim()) return [];
-    const q = searchInput.toLowerCase().trim();
+    const q = searchInput.trim().toLowerCase();
+    if (!q) return [];
     return storeProducts
-      .filter(
-        (p) =>
-          p.name.toLowerCase().includes(q) ||
-          (p.barcode && p.barcode.toLowerCase().includes(q))
-      )
+      .filter((p) => {
+        const nameMatch = p?.name ? String(p.name).toLowerCase().includes(q) : false;
+        const barcodeMatch = p?.barcode ? String(p.barcode).toLowerCase().includes(q) : false;
+        return nameMatch || barcodeMatch;
+      })
       .slice(0, 8);
   }, [storeProducts, searchInput]);
 
