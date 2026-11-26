@@ -934,6 +934,56 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
     setFeedback(null);
 
     try {
+      // 0. Verify authenticated session before attempting any database operations
+      const {
+        data: { user: authUser },
+        error: authErr,
+      } = await supabase.auth.getUser();
+
+      const activeUser = authUser || currentUser;
+
+      if (!activeUser || !activeUser.id) {
+        setFeedback({
+          type: 'error',
+          message:
+            'No authenticated session found. Please sign in to your store account before saving inventory.',
+        });
+        setIsSavingStock(false);
+        return;
+      }
+
+      const verifiedStoreId: string = activeUser.id;
+
+      // Ensure public.store_profiles has a row for this authenticated user before product upsert
+      const storeName =
+        userProfile?.business_name ||
+        userProfile?.store_name ||
+        activeUser.user_metadata?.business_name ||
+        activeUser.user_metadata?.store_name ||
+        'Mittal Departmental Store';
+
+      try {
+        await supabase.from('store_profiles').upsert(
+          {
+            id: verifiedStoreId,
+            business_name: storeName || 'Mittal Departmental Store',
+            store_name: storeName || 'Mittal Departmental Store',
+            email: activeUser.email || '',
+            phone:
+              activeUser.phone ||
+              userProfile?.phone ||
+              activeUser.user_metadata?.phone ||
+              '',
+            role: 'admin',
+            is_approved: true,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'id' }
+        );
+      } catch (profileErr: any) {
+        console.warn('[PurchaseBills] store_profiles upsert note:', profileErr?.message);
+      }
+
       // 1. Supplier lookup or insertion into public.suppliers
       let linkedSupplierId: string | null = null;
       const cleanGstin = supplierGstin.trim();
@@ -943,7 +993,7 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
         let suppQuery = supabase
           .from('suppliers')
           .select('*')
-          .eq('store_id', currentUser.id);
+          .eq('store_id', verifiedStoreId);
 
         if (cleanGstin) {
           suppQuery = suppQuery.or(`gstin.eq.${cleanGstin},name.ilike.${cleanSuppName}`);
@@ -976,12 +1026,12 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
               .from('suppliers')
               .update(updateSuppPayload)
               .eq('id', existingSupp.id)
-              .eq('store_id', currentUser.id);
+              .eq('store_id', verifiedStoreId);
           }
         } else if (!suppFetchErr) {
           // Insert new supplier in public.suppliers
           const newSuppPayload: any = {
-            store_id: currentUser.id,
+            store_id: verifiedStoreId,
             name: cleanSuppName,
             gstin: cleanGstin || null,
             address: supplierAddress.trim() || null,
@@ -1019,7 +1069,7 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
           } else {
             const { fileKey } = await uploadToR2({
               file: fileInfo.file,
-              storeId: currentUser.id,
+              storeId: verifiedStoreId,
               folder: 'purchases',
             });
             uploadedFilePaths.push(fileKey);
@@ -1033,7 +1083,7 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
       const { data: existingProducts, error: fetchErr } = await supabase
         .from('products')
         .select('*')
-        .eq('store_id', currentUser.id);
+        .eq('store_id', verifiedStoreId);
 
       if (fetchErr) throw fetchErr;
 
@@ -1107,7 +1157,7 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
             .from('products')
             .update(updateData)
             .eq('id', existing.id)
-            .eq('store_id', currentUser.id);
+            .eq('store_id', verifiedStoreId);
 
           // Graceful fallback if database table doesn't have sub_category or purchase_price column
           if (
@@ -1121,7 +1171,7 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
               .from('products')
               .update(updateData)
               .eq('id', existing.id)
-              .eq('store_id', currentUser.id);
+              .eq('store_id', verifiedStoreId);
             updateErr = retryRes.error;
           }
 
@@ -1130,7 +1180,7 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
         } else {
           // Insert new product into public.products
           const insertData: any = {
-            store_id: currentUser.id,
+            store_id: verifiedStoreId,
             name: trimmedName,
             unit: unit,
             mrp: sellPrice,
@@ -1165,7 +1215,7 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
 
       // 4. Save purchase bill record in public.purchase_bills
       const billPayload: any = {
-        store_id: currentUser.id,
+        store_id: verifiedStoreId,
         supplier_id: linkedSupplierId,
         supplier_name: cleanSuppName,
         supplier_gstin: cleanGstin || null,
