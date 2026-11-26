@@ -38,6 +38,9 @@ import {
   RotateCcw,
   FileSpreadsheet,
   ChevronRight,
+  RotateCw,
+  ZoomIn,
+  ZoomOut,
 } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 import QRCode from 'react-qr-code';
@@ -248,12 +251,15 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
   const [savedBills, setSavedBills] = useState<PurchaseBillRecord[]>([]);
   const [loadingSavedBills, setLoadingSavedBills] = useState(false);
 
-  // Bill Details Modal State
+  // Bill Details Modal & Document Viewer State
   const [detailsModalBill, setDetailsModalBill] = useState<PurchaseBillRecord | null>(null);
   const [modalResolvedUrls, setModalResolvedUrls] = useState<
     Array<{ name: string; url: string; isPdf: boolean }>
   >([]);
   const [loadingSignedUrls, setLoadingSignedUrls] = useState(false);
+  const [viewerZoom, setViewerZoom] = useState<number>(1);
+  const [viewerRotation, setViewerRotation] = useState<number>(0);
+  const [activeViewerDocIndex, setActiveViewerDocIndex] = useState<number>(0);
 
   // Phone QR Scan Modal State
   const [phoneQrModalOpen, setPhoneQrModalOpen] = useState(false);
@@ -580,12 +586,15 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
         id: '1',
         name: 'Fortune Sunlite Refined Sunflower Oil 1L Pouch',
         item_name: 'Fortune Sunlite Refined Sunflower Oil 1L Pouch',
+        hsn_code: '15121910',
         qty: 24,
         quantity: 24,
         unit: 'pack',
+        purchase_rate: 118,
         purchase_price: 118,
         price_without_tax: 118,
         price_after_tax: 123.9,
+        discount: 0,
         selling_price: 135,
         mrp: 135,
         gst_rate: 5,
@@ -599,12 +608,15 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
         id: '2',
         name: 'Aashirvaad Shudh Chakki Atta 10kg',
         item_name: 'Aashirvaad Shudh Chakki Atta 10kg',
+        hsn_code: '11010000',
         qty: 15,
         quantity: 15,
         unit: 'pack',
+        purchase_rate: 365,
         purchase_price: 365,
         price_without_tax: 365,
         price_after_tax: 365,
+        discount: 0,
         selling_price: 420,
         mrp: 420,
         gst_rate: 0,
@@ -618,12 +630,15 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
         id: '3',
         name: 'Tata Salt Vaccum Evaporated 1kg',
         item_name: 'Tata Salt Vaccum Evaporated 1kg',
+        hsn_code: '25010010',
         qty: 50,
         quantity: 50,
         unit: 'pack',
+        purchase_rate: 22,
         purchase_price: 22,
         price_without_tax: 22,
         price_after_tax: 22,
+        discount: 0,
         selling_price: 28,
         mrp: 28,
         gst_rate: 0,
@@ -637,12 +652,15 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
         id: '4',
         name: 'Amul Pure Ghee 1L Tin',
         item_name: 'Amul Pure Ghee 1L Tin',
+        hsn_code: '04059020',
         qty: 12,
         quantity: 12,
         unit: 'pack',
+        purchase_rate: 540,
         purchase_price: 540,
         price_without_tax: 540,
         price_after_tax: 604.8,
+        discount: 0,
         selling_price: 610,
         mrp: 610,
         gst_rate: 12,
@@ -656,12 +674,15 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
         id: '5',
         name: 'Surf Excel Quick Wash Detergent Powder 1kg',
         item_name: 'Surf Excel Quick Wash Detergent Powder 1kg',
+        hsn_code: '34029090',
         qty: 20,
         quantity: 20,
         unit: 'pack',
+        purchase_rate: 132,
         purchase_price: 132,
         price_without_tax: 132,
         price_after_tax: 155.76,
+        discount: 0,
         selling_price: 155,
         mrp: 155,
         gst_rate: 18,
@@ -736,7 +757,7 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
           ? { images: pageDataUrls.slice(0, 4) }
           : { text: rawText };
 
-      const res = await fetch('/api/parse-purchase-bill', {
+      const res = await fetch('/api/extract-bill', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -754,26 +775,35 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
         throw new Error(result.error || 'Failed to extract items from purchase bill.');
       }
 
-      const data: PurchaseBillData = result.data;
-      setSupplierName(data.supplier_name || '');
-      setSupplierGstin(data.supplier_gstin || '');
-      setSupplierAddress(data.supplier_address || '');
-      setSupplierContact(data.supplier_contact || '');
-      setSupplierEmail(data.supplier_email || '');
-      setSupplierFssai(data.supplier_fssai || '');
-      setBillNumber(data.bill_number || `PB-${Date.now().toString().slice(-6)}`);
-      setBillDate(data.bill_date || new Date().toISOString().slice(0, 10));
+      const data: any = result.data;
+      const seller = data.seller_name || data.supplier_name || '';
+      const gstin = data.gstin || data.supplier_gstin || '';
+      const address = data.address || data.supplier_address || '';
+      const phone = data.phone || data.supplier_contact || '';
+      const email = data.email || data.supplier_email || '';
+      const fssai = data.fssai || data.supplier_fssai || '';
+      const invNumber = data.invoice_number || data.bill_number || `PB-${Date.now().toString().slice(-6)}`;
+      const invDate = data.invoice_date || data.bill_date || new Date().toISOString().slice(0, 10);
+
+      setSupplierName(seller);
+      setSupplierGstin(gstin);
+      setSupplierAddress(address);
+      setSupplierContact(phone);
+      setSupplierEmail(email);
+      setSupplierFssai(fssai);
+      setBillNumber(invNumber);
+      setBillDate(invDate);
 
       setItems(
-        data.items.map((it, idx) => {
+        (data.items || []).map((it: any, idx: number) => {
           const qty = Number(it.quantity ?? it.qty) || 1;
-          const buyRate = Number(it.price_without_tax ?? it.purchase_price) || 0;
+          const buyRate = Number(it.purchase_rate ?? it.price_without_tax ?? it.purchase_price) || 0;
           const gstRate = Number(it.gst_rate) || 0;
+          const discount = Number(it.discount) || 0;
           const rateWithTax =
             Number(it.price_after_tax) ||
             Math.round(buyRate * (1 + gstRate / 100) * 100) / 100;
 
-          // Strictly preserve null if MRP was not explicitly printed on invoice
           const mrp =
             it.mrp !== null &&
             it.mrp !== undefined &&
@@ -783,31 +813,38 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
               : null;
 
           const sellPrice =
-            it.selling_price !== null &&
-            it.selling_price !== undefined &&
-            !isNaN(Number(it.selling_price)) &&
-            Number(it.selling_price) > 0
+            mrp !== null && mrp > 0
+              ? mrp
+              : it.selling_price !== null &&
+                it.selling_price !== undefined &&
+                !isNaN(Number(it.selling_price)) &&
+                Number(it.selling_price) > 0
               ? Math.round(Number(it.selling_price) * 100) / 100
-              : mrp;
+              : null;
 
           const lineAmount =
             Number(it.amount ?? it.total_amount) || Math.round(qty * buyRate * 100) / 100;
 
-          const cat = it.category?.trim() || '';
-          const subCat = it.sub_category?.trim() || '';
-          const barcode = it.barcode?.trim() || '';
+          const hsn = String(it.hsn_code || '').trim();
+          const cat = String(it.category || '').trim();
+          const subCat = String(it.sub_category || '').trim();
+          const barcode = String(it.barcode || '').trim();
+          const itemName = String(it.name || it.item_name || '').trim();
 
           return {
             ...it,
             id: `${Date.now()}-${idx}`,
-            name: it.item_name || it.name || '',
-            item_name: it.item_name || it.name || '',
+            name: itemName,
+            item_name: itemName,
+            hsn_code: hsn,
             qty: qty,
             quantity: qty,
             unit: it.unit || 'pcs',
+            purchase_rate: buyRate,
             purchase_price: buyRate,
             price_without_tax: buyRate,
             price_after_tax: rateWithTax,
+            discount: discount,
             selling_price: sellPrice,
             mrp: mrp,
             gst_rate: gstRate,
@@ -850,10 +887,11 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
         if (field === 'item_name' || field === 'name') {
           updated.item_name = String(value);
           updated.name = String(value);
-        } else if (field === 'price_without_tax' || field === 'purchase_price') {
+        } else if (field === 'price_without_tax' || field === 'purchase_price' || field === 'purchase_rate') {
           const buyRate = Math.max(0, parseFloat(value) || 0);
           updated.price_without_tax = buyRate;
           updated.purchase_price = buyRate;
+          updated.purchase_rate = buyRate;
           updated.price_after_tax = Math.round(buyRate * (1 + gst / 100) * 100) / 100;
           updated.amount = Math.round(qty * buyRate * 100) / 100;
           updated.total_amount = updated.amount;
@@ -864,14 +902,17 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
             gst > 0 ? Math.round((rateWithTax / (1 + gst / 100)) * 100) / 100 : rateWithTax;
           updated.price_without_tax = buyRate;
           updated.purchase_price = buyRate;
+          updated.purchase_rate = buyRate;
           updated.amount = Math.round(qty * buyRate * 100) / 100;
           updated.total_amount = updated.amount;
         } else if (field === 'gst_rate') {
-          const buyRate = Number(updated.price_without_tax ?? updated.purchase_price) || 0;
+          const buyRate = Number(updated.purchase_rate ?? updated.price_without_tax ?? updated.purchase_price) || 0;
           updated.gst_rate = gst;
           updated.price_after_tax = Math.round(buyRate * (1 + gst / 100) * 100) / 100;
+        } else if (field === 'discount') {
+          updated.discount = Math.max(0, parseFloat(value) || 0);
         } else if (field === 'qty' || field === 'quantity') {
-          const buyRate = Number(updated.price_without_tax ?? updated.purchase_price) || 0;
+          const buyRate = Number(updated.purchase_rate ?? updated.price_without_tax ?? updated.purchase_price) || 0;
           updated.qty = qty;
           updated.quantity = qty;
           updated.amount = Math.round(qty * buyRate * 100) / 100;
@@ -884,6 +925,7 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
             const buyRate = Math.round((amt / qty) * 100) / 100;
             updated.price_without_tax = buyRate;
             updated.purchase_price = buyRate;
+            updated.purchase_rate = buyRate;
             updated.price_after_tax = Math.round(buyRate * (1 + gst / 100) * 100) / 100;
           }
         } else if (field === 'mrp' || field === 'selling_price') {
@@ -893,6 +935,8 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
               : Math.max(0, parseFloat(value) || 0);
           updated.mrp = sellVal;
           updated.selling_price = sellVal;
+        } else if (field === 'hsn_code') {
+          updated.hsn_code = String(value);
         } else if (field === 'category') {
           const newCat = String(value);
           updated.category = newCat;
@@ -917,12 +961,15 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
       id: Date.now().toString(),
       name: '',
       item_name: '',
+      hsn_code: '',
       qty: 1,
       quantity: 1,
       unit: 'pcs',
+      purchase_rate: 0,
       purchase_price: 0,
       price_without_tax: 0,
       price_after_tax: 0,
+      discount: 0,
       selling_price: null,
       mrp: null,
       gst_rate: 5,
@@ -1046,75 +1093,91 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
         console.warn('[PurchaseBills] store_profiles upsert note:', profileErr?.message);
       }
 
-      // 1. Supplier lookup or insertion into public.suppliers
+      // 1. First upsert the vendor into public.suppliers (store_id: user.id, name: sellerName, gstin, phone, address) and surface error toast if it fails
       let linkedSupplierId: string | null = null;
       const cleanGstin = supplierGstin.trim();
       const cleanSuppName = supplierName.trim() || 'Wholesale Supplier';
 
-      try {
-        let suppQuery = supabase
+      let suppQuery = supabase
+        .from('suppliers')
+        .select('*')
+        .eq('store_id', verifiedStoreId);
+
+      if (cleanGstin) {
+        suppQuery = suppQuery.or(`gstin.eq.${cleanGstin},name.ilike.${cleanSuppName}`);
+      } else {
+        suppQuery = suppQuery.ilike('name', cleanSuppName);
+      }
+
+      const { data: matchedSuppliers, error: suppFetchErr } = await suppQuery;
+
+      if (suppFetchErr) {
+        setFeedback({
+          type: 'error',
+          message: `Failed to query suppliers from database: ${suppFetchErr.message}`,
+        });
+        setIsSavingStock(false);
+        return;
+      }
+
+      if (matchedSuppliers && matchedSuppliers.length > 0) {
+        const existingSupp = matchedSuppliers[0];
+        linkedSupplierId = existingSupp.id;
+
+        const updateSuppPayload: any = {
+          name: cleanSuppName,
+          phone: supplierContact.trim() || existingSupp.phone || existingSupp.contact || null,
+          contact: supplierContact.trim() || existingSupp.contact || existingSupp.phone || null,
+          address: supplierAddress.trim() || existingSupp.address || null,
+        };
+        if (cleanGstin) updateSuppPayload.gstin = cleanGstin;
+        if (supplierEmail.trim()) updateSuppPayload.email = supplierEmail.trim();
+        if (supplierFssai.trim()) updateSuppPayload.fssai = supplierFssai.trim();
+
+        const { error: suppUpdErr } = await supabase
           .from('suppliers')
-          .select('*')
+          .update(updateSuppPayload)
+          .eq('id', existingSupp.id)
           .eq('store_id', verifiedStoreId);
 
-        if (cleanGstin) {
-          suppQuery = suppQuery.or(`gstin.eq.${cleanGstin},name.ilike.${cleanSuppName}`);
-        } else {
-          suppQuery = suppQuery.ilike('name', cleanSuppName);
+        if (suppUpdErr) {
+          setFeedback({
+            type: 'error',
+            message: `Failed to update supplier "${cleanSuppName}": ${suppUpdErr.message}`,
+          });
+          setIsSavingStock(false);
+          return;
+        }
+      } else {
+        const newSuppPayload: any = {
+          store_id: verifiedStoreId,
+          name: cleanSuppName,
+          gstin: cleanGstin || null,
+          address: supplierAddress.trim() || null,
+          contact: supplierContact.trim() || null,
+          phone: supplierContact.trim() || null,
+          email: supplierEmail.trim() || null,
+          fssai: supplierFssai.trim() || null,
+        };
+
+        const { data: insertedSupp, error: suppInsErr } = await supabase
+          .from('suppliers')
+          .insert(newSuppPayload)
+          .select('id')
+          .single();
+
+        if (suppInsErr) {
+          setFeedback({
+            type: 'error',
+            message: `Failed to register supplier "${cleanSuppName}": ${suppInsErr.message}`,
+          });
+          setIsSavingStock(false);
+          return;
         }
 
-        const { data: matchedSuppliers, error: suppFetchErr } = await suppQuery;
-
-        if (!suppFetchErr && matchedSuppliers && matchedSuppliers.length > 0) {
-          // Supplier exists, reuse ID and update contact/address if newly provided
-          const existingSupp = matchedSuppliers[0];
-          linkedSupplierId = existingSupp.id;
-
-          const updateSuppPayload: any = {};
-          if (cleanGstin && !existingSupp.gstin) updateSuppPayload.gstin = cleanGstin;
-          if (supplierAddress.trim() && !existingSupp.address)
-            updateSuppPayload.address = supplierAddress.trim();
-          if (supplierContact.trim() && !existingSupp.contact) {
-            updateSuppPayload.contact = supplierContact.trim();
-            updateSuppPayload.phone = supplierContact.trim();
-          }
-          if (supplierEmail.trim() && !existingSupp.email)
-            updateSuppPayload.email = supplierEmail.trim();
-          if (supplierFssai.trim() && !existingSupp.fssai)
-            updateSuppPayload.fssai = supplierFssai.trim();
-
-          if (Object.keys(updateSuppPayload).length > 0) {
-            await supabase
-              .from('suppliers')
-              .update(updateSuppPayload)
-              .eq('id', existingSupp.id)
-              .eq('store_id', verifiedStoreId);
-          }
-        } else if (!suppFetchErr) {
-          // Insert new supplier in public.suppliers
-          const newSuppPayload: any = {
-            store_id: verifiedStoreId,
-            name: cleanSuppName,
-            gstin: cleanGstin || null,
-            address: supplierAddress.trim() || null,
-            contact: supplierContact.trim() || null,
-            phone: supplierContact.trim() || null,
-            email: supplierEmail.trim() || null,
-            fssai: supplierFssai.trim() || null,
-          };
-
-          const { data: insertedSupp, error: suppInsErr } = await supabase
-            .from('suppliers')
-            .insert(newSuppPayload)
-            .select('id')
-            .single();
-
-          if (!suppInsErr && insertedSupp) {
-            linkedSupplierId = insertedSupp.id;
-          }
+        if (insertedSupp) {
+          linkedSupplierId = insertedSupp.id;
         }
-      } catch (suppErr: any) {
-        console.warn('[PurchaseBills] suppliers lookup/insert warning:', suppErr.message);
       }
 
       // 2. Upload original PDF and image files into Cloudflare R2 via uploadToR2
@@ -1141,13 +1204,24 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
         }
       }
 
-      // 3. Upsert every line item into public.products (store_id = user.id)
+      const primaryFileUrl =
+        filesToSave[0]?.r2PublicUrl ||
+        (uploadedFilePaths.length > 0 ? uploadedFilePaths[0] : null);
+
+      // 3. Upsert every line item into public.products with mrp, selling_price, hsn_code, category, sub_category
       const { data: existingProducts, error: fetchErr } = await supabase
         .from('products')
         .select('*')
         .eq('store_id', verifiedStoreId);
 
-      if (fetchErr) throw fetchErr;
+      if (fetchErr) {
+        setFeedback({
+          type: 'error',
+          message: `Failed to fetch store catalog: ${fetchErr.message}`,
+        });
+        setIsSavingStock(false);
+        return;
+      }
 
       const catalog: Product[] = existingProducts || [];
       let updatedCount = 0;
@@ -1156,13 +1230,11 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
       for (const item of items) {
         const trimmedName = (item.item_name || item.name || '').trim();
         const trimmedBarcode = item.barcode?.trim() || null;
+        const trimmedHsn = (item.hsn_code || '').trim() || null;
         const trimmedCategory = (item.category || '').trim();
         const trimmedSubCategory = item.sub_category?.trim() || null;
         const unit = item.unit || 'pcs';
 
-        // Matching strategy:
-        // Priority 1: Match by barcode (if provided)
-        // Priority 2: Match by name (case-insensitive)
         let existing: Product | undefined;
         if (trimmedBarcode) {
           existing = catalog.find(
@@ -1175,21 +1247,33 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
           );
         }
 
-        const buyPrice = Number(item.price_without_tax ?? item.purchase_price) || 0;
-        // Do NOT auto-calculate MRP from buy rate (never guess with buyPrice * 1.2)
-        const mrpVal =
+        const buyPrice = Number(item.purchase_rate ?? item.price_without_tax ?? item.purchase_price) || 0;
+        const parsedMrp =
           item.mrp !== null &&
           item.mrp !== undefined &&
           !isNaN(Number(item.mrp)) &&
           Number(item.mrp) > 0
             ? Math.round(Number(item.mrp) * 100) / 100
-            : item.selling_price !== null &&
-              item.selling_price !== undefined &&
-              !isNaN(Number(item.selling_price)) &&
-              Number(item.selling_price) > 0
-            ? Math.round(Number(item.selling_price) * 100) / 100
-            : 0;
-        const sellPrice = mrpVal;
+            : null;
+
+        // Defaulting to mrp if > 0, else editable selling rate—never leaving 0 when MRP is present
+        let sellPrice: number;
+        if (parsedMrp !== null && parsedMrp > 0) {
+          sellPrice = parsedMrp;
+        } else if (
+          item.selling_price !== null &&
+          item.selling_price !== undefined &&
+          !isNaN(Number(item.selling_price)) &&
+          Number(item.selling_price) > 0
+        ) {
+          sellPrice = Math.round(Number(item.selling_price) * 100) / 100;
+        } else if (item.price_after_tax && item.price_after_tax > 0) {
+          sellPrice = Math.round(Number(item.price_after_tax) * 100) / 100;
+        } else {
+          sellPrice = buyPrice;
+        }
+
+        const mrpForDb = parsedMrp !== null && parsedMrp > 0 ? parsedMrp : sellPrice;
         const qty = Number(item.quantity ?? item.qty) || 1;
         const gstRate = Number(item.gst_rate) || 0;
 
@@ -1200,20 +1284,13 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
             stock_qty: newStock,
             purchase_price: buyPrice,
             gst_rate: gstRate,
+            mrp: mrpForDb,
+            selling_price: sellPrice,
           };
-          if (sellPrice > 0) {
-            updateData.mrp = sellPrice;
-            updateData.selling_price = sellPrice;
-          }
-          if (trimmedCategory) {
-            updateData.category = trimmedCategory;
-          }
-          if (trimmedSubCategory) {
-            updateData.sub_category = trimmedSubCategory;
-          }
-          if (trimmedBarcode) {
-            updateData.barcode = trimmedBarcode;
-          }
+          if (trimmedCategory) updateData.category = trimmedCategory;
+          if (trimmedSubCategory) updateData.sub_category = trimmedSubCategory;
+          if (trimmedBarcode) updateData.barcode = trimmedBarcode;
+          if (trimmedHsn) updateData.hsn_code = trimmedHsn;
 
           let { error: updateErr } = await supabase
             .from('products')
@@ -1221,12 +1298,13 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
             .eq('id', existing.id)
             .eq('store_id', verifiedStoreId);
 
-          // Graceful fallback if database table doesn't have sub_category or purchase_price column
           if (
             updateErr &&
-            (updateErr.message?.includes('sub_category') ||
+            (updateErr.message?.includes('hsn_code') ||
+              updateErr.message?.includes('sub_category') ||
               updateErr.message?.includes('purchase_price'))
           ) {
+            delete updateData.hsn_code;
             delete updateData.sub_category;
             delete updateData.purchase_price;
             const retryRes = await supabase
@@ -1237,7 +1315,14 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
             updateErr = retryRes.error;
           }
 
-          if (updateErr) throw updateErr;
+          if (updateErr) {
+            setFeedback({
+              type: 'error',
+              message: `Failed to update product "${trimmedName}": ${updateErr.message}`,
+            });
+            setIsSavingStock(false);
+            return;
+          }
           updatedCount++;
         } else {
           // Insert new product into public.products
@@ -1245,7 +1330,7 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
             store_id: verifiedStoreId,
             name: trimmedName,
             unit: unit,
-            mrp: sellPrice,
+            mrp: mrpForDb,
             selling_price: sellPrice,
             purchase_price: buyPrice,
             gst_rate: gstRate,
@@ -1254,28 +1339,43 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
             category: trimmedCategory,
             sub_category: trimmedSubCategory,
             barcode: trimmedBarcode,
+            hsn_code: trimmedHsn,
           };
 
           let { error: insertErr } = await supabase.from('products').insert(insertData);
 
-          // Graceful fallback if database table doesn't have sub_category or purchase_price column
           if (
             insertErr &&
-            (insertErr.message?.includes('sub_category') ||
+            (insertErr.message?.includes('hsn_code') ||
+              insertErr.message?.includes('sub_category') ||
               insertErr.message?.includes('purchase_price'))
           ) {
+            delete insertData.hsn_code;
             delete insertData.sub_category;
             delete insertData.purchase_price;
             const retryRes = await supabase.from('products').insert(insertData);
             insertErr = retryRes.error;
           }
 
-          if (insertErr) throw insertErr;
+          if (insertErr) {
+            setFeedback({
+              type: 'error',
+              message: `Failed to create product "${trimmedName}": ${insertErr.message}`,
+            });
+            setIsSavingStock(false);
+            return;
+          }
           createdCount++;
         }
       }
 
-      // 4. Save purchase bill record in public.purchase_bills
+      // 4. Save purchase bill record in public.purchase_bills and rows in public.purchase_bill_items
+      const invNo = billNumber.trim() || `PB-${Date.now().toString().slice(-6)}`;
+      const invDate = billDate || new Date().toISOString().slice(0, 10);
+      const totalAmt = Math.round(totalAmountWithTax * 100) / 100;
+      const taxAmt = Math.round(totalTaxAmount * 100) / 100;
+      const subtotalAmt = Math.round(totalAmountWithoutTax * 100) / 100;
+
       const billPayload: any = {
         store_id: verifiedStoreId,
         supplier_id: linkedSupplierId,
@@ -1285,11 +1385,16 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
         supplier_contact: supplierContact.trim() || null,
         supplier_email: supplierEmail.trim() || null,
         supplier_fssai: supplierFssai.trim() || null,
-        bill_number: billNumber.trim() || `PB-${Date.now().toString().slice(-6)}`,
-        bill_date: billDate,
-        subtotal: Math.round(totalAmountWithoutTax * 100) / 100,
-        total_gst: Math.round(totalTaxAmount * 100) / 100,
-        grand_total: Math.round(totalAmountWithTax * 100) / 100,
+        invoice_number: invNo,
+        bill_number: invNo,
+        invoice_date: invDate,
+        bill_date: invDate,
+        total_amount: totalAmt,
+        grand_total: totalAmt,
+        tax_amount: taxAmt,
+        total_gst: taxAmt,
+        subtotal: subtotalAmt,
+        file_url: primaryFileUrl,
         total_items: items.length,
         total_units: totalUnits,
         bill_photo_urls: uploadedFilePaths,
@@ -1297,36 +1402,109 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
         created_at: new Date().toISOString(),
       };
 
-      try {
-        let { data: savedBillData, error: billErr } = await supabase
+      let savedBillData: any = null;
+      let { data: insertedBill, error: billErr } = await supabase
+        .from('purchase_bills')
+        .insert(billPayload)
+        .select('*')
+        .single();
+
+      if (billErr) {
+        // Fallback for column variances (file_url, invoice_number, etc.)
+        const fallbackPayload = { ...billPayload };
+        delete fallbackPayload.file_url;
+        delete fallbackPayload.invoice_number;
+        delete fallbackPayload.invoice_date;
+        delete fallbackPayload.total_amount;
+        delete fallbackPayload.tax_amount;
+        if (billErr.message?.includes('supplier_id')) {
+          delete fallbackPayload.supplier_id;
+          delete fallbackPayload.supplier_gstin;
+          delete fallbackPayload.supplier_address;
+          delete fallbackPayload.supplier_contact;
+          delete fallbackPayload.supplier_email;
+          delete fallbackPayload.supplier_fssai;
+        }
+
+        const retryBill = await supabase
           .from('purchase_bills')
-          .insert(billPayload)
+          .insert(fallbackPayload)
           .select('*')
           .single();
 
-        // If table doesn't have supplier_id or extra fields, retry with base columns
-        if (billErr && billErr.message?.includes('supplier_id')) {
-          delete billPayload.supplier_id;
-          delete billPayload.supplier_gstin;
-          delete billPayload.supplier_address;
-          delete billPayload.supplier_contact;
-          delete billPayload.supplier_email;
-          delete billPayload.supplier_fssai;
-          const retryBill = await supabase
-            .from('purchase_bills')
-            .insert(billPayload)
-            .select('*')
-            .single();
-          billErr = retryBill.error;
-          savedBillData = retryBill.data;
+        if (retryBill.error) {
+          setFeedback({
+            type: 'error',
+            message: `Failed to save purchase bill: ${retryBill.error.message}`,
+          });
+          setIsSavingStock(false);
+          return;
         }
-
-        if (!billErr && savedBillData) {
-          setSavedBills((prev) => [savedBillData, ...prev]);
-        }
-      } catch (saveErr: any) {
-        console.warn('[PurchaseBills] purchase_bills record save warning:', saveErr.message);
+        savedBillData = retryBill.data;
+      } else {
+        savedBillData = insertedBill;
       }
+
+      if (savedBillData) {
+        setSavedBills((prev) => [savedBillData, ...prev]);
+
+        // Insert individual item rows into public.purchase_bill_items
+        const savedBillId = savedBillData.id;
+        if (savedBillId) {
+          const billItemRows = items.map((it) => {
+            const qty = Number(it.quantity ?? it.qty) || 1;
+            const rate = Number(it.purchase_rate ?? it.price_without_tax ?? it.purchase_price) || 0;
+            const gst = Number(it.gst_rate) || 0;
+            const mrpVal = Number(it.mrp) > 0 ? Number(it.mrp) : null;
+            const total = Number(it.total_amount ?? it.amount) || Math.round(qty * rate * 100) / 100;
+            const hsn = (it.hsn_code || '').trim();
+
+            return {
+              purchase_bill_id: savedBillId,
+              store_id: verifiedStoreId,
+              item_name: it.item_name || it.name || '',
+              name: it.item_name || it.name || '',
+              hsn_code: hsn,
+              mrp: mrpVal,
+              rate: rate,
+              purchase_rate: rate,
+              quantity: qty,
+              unit: it.unit || 'pcs',
+              gst_rate: gst,
+              total: total,
+            };
+          });
+
+          try {
+            const { error: itemsErr } = await supabase
+              .from('purchase_bill_items')
+              .insert(billItemRows);
+            if (itemsErr) {
+              console.warn('[PurchaseBills] purchase_bill_items insert notice:', itemsErr.message);
+              // Retry with core columns if extra columns differ
+              const fallbackRows = billItemRows.map((r) => ({
+                purchase_bill_id: r.purchase_bill_id,
+                store_id: r.store_id,
+                item_name: r.item_name,
+                hsn_code: r.hsn_code,
+                mrp: r.mrp,
+                rate: r.rate,
+                quantity: r.quantity,
+                gst_rate: r.gst_rate,
+                total: r.total,
+              }));
+              await supabase.from('purchase_bill_items').insert(fallbackRows);
+            }
+          } catch (itemsCatchErr: any) {
+            console.warn('[PurchaseBills] purchase_bill_items exception:', itemsCatchErr?.message);
+          }
+        }
+      }
+
+      // Immediately refresh invoicesLedger and vendorsDirectory state
+      fetchSavedBills();
+      fetchSuppliers();
+      loadExistingStoreCatalogCategories();
 
       setFeedback({
         type: 'success',
@@ -1370,13 +1548,25 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
     setDetailsModalBill(bill);
     setModalResolvedUrls([]);
     setLoadingSignedUrls(true);
+    setViewerZoom(1);
+    setViewerRotation(0);
+    setActiveViewerDocIndex(0);
 
-    const paths = bill.bill_photo_urls || [];
+    const paths: string[] = [];
+    if ((bill as any).file_url) {
+      paths.push((bill as any).file_url);
+    }
+    if (bill.bill_photo_urls && Array.isArray(bill.bill_photo_urls)) {
+      bill.bill_photo_urls.forEach((p) => {
+        if (!paths.includes(p)) paths.push(p);
+      });
+    }
+
     const resolvedList: Array<{ name: string; url: string; isPdf: boolean }> = [];
 
     for (const path of paths) {
-      const isPdf = path.toLowerCase().endsWith('.pdf');
-      const cleanFileName = path.split('/').pop() || 'Invoice Document';
+      const isPdf = path.toLowerCase().endsWith('.pdf') || path.toLowerCase().includes('.pdf?');
+      const cleanFileName = path.split('/').pop()?.split('?')[0] || 'Invoice Document';
 
       // 1. If it's already a full HTTP/HTTPS URL, use directly
       if (path.startsWith('http://') || path.startsWith('https://')) {
@@ -1414,48 +1604,43 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
       resolvedList.push({ name: cleanFileName, url: path, isPdf });
     }
 
+    // If bill does not have items_json or it is empty, attempt to fetch from purchase_bill_items
+    if ((!bill.items_json || bill.items_json.length === 0) && bill.id) {
+      try {
+        const { data: dbItems } = await supabase
+          .from('purchase_bill_items')
+          .select('*')
+          .eq('purchase_bill_id', bill.id);
+        if (dbItems && dbItems.length > 0) {
+          bill.items_json = dbItems.map((di: any) => ({
+            item_name: di.item_name,
+            name: di.item_name,
+            hsn_code: di.hsn_code,
+            mrp: di.mrp,
+            purchase_rate: di.rate,
+            purchase_price: di.rate,
+            price_without_tax: di.rate,
+            quantity: di.quantity,
+            qty: di.quantity,
+            gst_rate: di.gst_rate,
+            total_amount: di.total,
+            amount: di.total,
+            total: di.total,
+            unit: di.unit || 'PCS',
+          }));
+          setDetailsModalBill({ ...bill });
+        }
+      } catch (e) {
+        console.warn('[PurchaseBills] Error fetching bill line items:', e);
+      }
+    }
+
     setModalResolvedUrls(resolvedList);
     setLoadingSignedUrls(false);
   };
 
   return (
     <div className="space-y-6">
-      {/* Top Header & Navigation Actions */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-200">
-        <div>
-          <div className="flex items-center gap-2">
-            <h2 className="text-lg font-bold text-[#0F172A]">
-              Purchase Bills & AI Stock Inward
-            </h2>
-            <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-teal-50 text-[#0D9488] border border-teal-200 font-mono">
-              Auto-Sync Catalog & Suppliers
-            </span>
-          </div>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Scan distributor invoices, upload wholesale PDFs, or paste challan text. Inward items directly into Product Master.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={handleLoadSampleBill}
-            className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 text-xs font-semibold transition-colors flex items-center gap-1.5 shadow-xs"
-          >
-            <Sparkles className="w-3.5 h-3.5 text-[#4338CA]" />
-            <span>Load Sample Wholesaler Bill</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={onNavigateToProducts}
-            className="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-50 text-[#4338CA] border border-indigo-200 text-xs font-bold transition-colors flex items-center gap-1.5 shadow-xs"
-          >
-            <span>Product Master</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      </div>
 
       {/* Notifications / Feedback Banner */}
       {feedback && (
@@ -2264,13 +2449,13 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
                         key={item.id || index}
                         className="p-3.5 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-2.5 hover:border-indigo-200 transition-all text-xs"
                       >
-                        {/* Row 1: Item Name, Barcode & Delete */}
+                        {/* Row 1: Item Name, HSN Code, Barcode & Delete */}
                         <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-center">
                           <div className="sm:col-span-1 text-[11px] font-bold text-slate-400 font-mono">
                             #{index + 1}
                           </div>
 
-                          <div className="sm:col-span-7">
+                          <div className="sm:col-span-6">
                             <input
                               type="text"
                               value={item.item_name || item.name}
@@ -2282,17 +2467,34 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
                             />
                           </div>
 
-                          <div className="sm:col-span-3">
+                          <div className="sm:col-span-2">
                             <div className="relative">
-                              <Barcode className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+                              <Tag className="w-3.5 h-3.5 text-slate-400 absolute left-2 top-2" />
+                              <input
+                                type="text"
+                                value={item.hsn_code || ''}
+                                onChange={(e) =>
+                                  updateItem(item.id || '', 'hsn_code', e.target.value)
+                                }
+                                placeholder="HSN/SAC"
+                                maxLength={8}
+                                className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-7 pr-2 py-1.5 text-xs font-mono text-slate-700 focus:bg-white focus:outline-none focus:border-[#4338CA]"
+                                title="4–8 digit HSN/SAC code"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="sm:col-span-2">
+                            <div className="relative">
+                              <Barcode className="w-3.5 h-3.5 text-slate-400 absolute left-2 top-2" />
                               <input
                                 type="text"
                                 value={item.barcode || ''}
                                 onChange={(e) =>
                                   updateItem(item.id || '', 'barcode', e.target.value)
                                 }
-                                placeholder="Barcode / EAN-13"
-                                className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-8 pr-2 py-1.5 text-xs font-mono text-slate-700 focus:bg-white focus:outline-none focus:border-[#4338CA]"
+                                placeholder="Barcode"
+                                className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-7 pr-2 py-1.5 text-xs font-mono text-slate-700 focus:bg-white focus:outline-none focus:border-[#4338CA]"
                               />
                             </div>
                           </div>
@@ -2685,15 +2887,17 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-xs text-left">
-                <thead className="bg-slate-50 text-[10px] uppercase font-semibold text-slate-600 border-b border-slate-200">
+                <thead className="bg-slate-50 text-[10px] uppercase font-bold text-slate-600 border-b border-slate-200">
                   <tr>
-                    <th className="py-2.5 px-3">Date</th>
-                    <th className="py-2.5 px-3">Supplier</th>
-                    <th className="py-2.5 px-3">Bill #</th>
-                    <th className="py-2.5 px-3 text-center">Items / Units</th>
-                    <th className="py-2.5 px-3 text-right">Grand Total</th>
-                    <th className="py-2.5 px-3 text-center">Attachments</th>
-                    <th className="py-2.5 px-3 text-right">Action</th>
+                    <th className="py-3 px-3">Date</th>
+                    <th className="py-3 px-3">Invoice #</th>
+                    <th className="py-3 px-3">Supplier / Vendor</th>
+                    <th className="py-3 px-3">GSTIN</th>
+                    <th className="py-3 px-3 text-center">Items</th>
+                    <th className="py-3 px-3 text-right">Taxable</th>
+                    <th className="py-3 px-3 text-right">GST</th>
+                    <th className="py-3 px-3 text-right">Grand Total</th>
+                    <th className="py-3 px-3 text-center">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -2703,69 +2907,75 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
                       const q = ledgerSearchQuery.toLowerCase();
                       return (
                         (bill.supplier_name || '').toLowerCase().includes(q) ||
-                        (bill.bill_number || '').toLowerCase().includes(q) ||
-                        (bill.supplier_gstin || '').toLowerCase().includes(q)
+                        (bill.bill_number || (bill as any).invoice_number || '').toLowerCase().includes(q) ||
+                        (bill.supplier_gstin || (bill as any).gstin || '').toLowerCase().includes(q)
                       );
                     })
                     .map((bill) => {
-                      const hasPdfs = (bill.bill_photo_urls || []).some((u) =>
-                        u.toLowerCase().endsWith('.pdf')
-                      );
-                      const filesCount = (bill.bill_photo_urls || []).length;
+                      const invoiceNum = bill.bill_number || (bill as any).invoice_number || '—';
+                      const vendorName = bill.supplier_name || (bill as any).seller_name || 'Vendor';
+                      const gstinVal = bill.supplier_gstin || (bill as any).gstin || '';
+                      const itemsCount = bill.total_items || (bill.items_json || []).length || 0;
+                      const grandTotalVal = Number(bill.grand_total ?? (bill as any).total_amount ?? 0);
+                      const gstVal = Number(bill.total_gst ?? (bill as any).tax_amount ?? 0);
+                      const taxableVal = Number(bill.subtotal ?? (grandTotalVal - gstVal));
 
                       return (
-                        <tr key={bill.id || bill.created_at} className="hover:bg-slate-50/60">
-                          <td className="py-2.5 px-3 font-mono text-slate-700">
-                            {bill.bill_date || bill.created_at?.slice(0, 10)}
+                        <tr
+                          key={bill.id || bill.created_at}
+                          onClick={() => handleOpenBillDetails(bill)}
+                          className="hover:bg-indigo-50/30 cursor-pointer transition-colors group"
+                        >
+                          <td className="py-3 px-3 font-mono text-slate-700 text-[11px] whitespace-nowrap">
+                            {bill.bill_date || (bill as any).invoice_date || bill.created_at?.slice(0, 10)}
                           </td>
-                          <td className="py-2.5 px-3">
-                            <span className="font-semibold text-[#0F172A] block">
-                              {bill.supplier_name}
+                          <td className="py-3 px-3 font-mono font-bold text-[#4338CA] text-[11px] whitespace-nowrap">
+                            {invoiceNum}
+                          </td>
+                          <td className="py-3 px-3">
+                            <span className="font-bold text-[#0F172A] block">
+                              {vendorName}
                             </span>
-                            {bill.supplier_gstin && (
-                              <span className="text-[10px] font-mono text-[#0D9488]">
-                                GSTIN: {bill.supplier_gstin}
+                            {bill.supplier_address && (
+                              <span className="text-[10px] text-slate-400 truncate max-w-[200px] block">
+                                {bill.supplier_address}
                               </span>
                             )}
                           </td>
-                          <td className="py-2.5 px-3 font-mono text-slate-600">
-                            {bill.bill_number}
-                          </td>
-                          <td className="py-2.5 px-3 text-center">
-                            <span className="font-semibold text-slate-800">
-                              {bill.total_items || (bill.items_json || []).length || 0}
-                            </span>{' '}
-                            items ({bill.total_units || 0} units)
-                          </td>
-                          <td className="py-2.5 px-3 text-right font-bold text-[#4338CA] font-mono">
-                            ₹{(Number(bill.grand_total) || 0).toLocaleString('en-IN')}
-                          </td>
-                          <td className="py-2.5 px-3 text-center">
-                            {filesCount > 0 ? (
-                              <span
-                                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                  hasPdfs
-                                    ? 'bg-rose-50 text-rose-700 border border-rose-200'
-                                    : 'bg-indigo-50 text-[#4338CA] border border-indigo-200'
-                                }`}
-                              >
-                                {hasPdfs ? <FileText className="w-3 h-3" /> : <ImageIcon className="w-3 h-3" />}
-                                <span>
-                                  {filesCount} {hasPdfs ? 'PDF/Img' : 'Img'}
-                                </span>
+                          <td className="py-3 px-3 font-mono text-slate-600 text-[11px]">
+                            {gstinVal ? (
+                              <span className="inline-block px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 text-[10px] font-semibold border border-slate-200">
+                                {gstinVal}
                               </span>
                             ) : (
-                              <span className="text-slate-400 text-[10px]">None</span>
+                              <span className="text-slate-400 italic text-[11px]">—</span>
                             )}
                           </td>
-                          <td className="py-2.5 px-3 text-right">
+                          <td className="py-3 px-3 text-center">
+                            <span className="inline-block font-mono font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 text-[11px]">
+                              {itemsCount} items
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 text-right font-mono text-slate-700">
+                            ₹{taxableVal.toFixed(2)}
+                          </td>
+                          <td className="py-3 px-3 text-right font-mono font-semibold text-[#0D9488]">
+                            +₹{gstVal.toFixed(2)}
+                          </td>
+                          <td className="py-3 px-3 text-right font-mono font-black text-[#0F172A] text-[13px]">
+                            ₹{grandTotalVal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </td>
+                          <td className="py-3 px-3 text-center">
                             <button
                               type="button"
-                              onClick={() => handleOpenBillDetails(bill)}
-                              className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-indigo-50 text-[#4338CA] border border-slate-200 hover:border-indigo-200 font-semibold text-xs inline-flex items-center gap-1 transition-colors"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenBillDetails(bill);
+                              }}
+                              className="px-3 py-1.5 rounded-xl bg-[#4338CA] hover:bg-[#3730A3] text-white font-bold text-xs inline-flex items-center gap-1.5 transition-colors shadow-2xs"
                             >
                               <Eye className="w-3.5 h-3.5" />
-                              <span>View Details</span>
+                              <span>View Bill</span>
                             </button>
                           </td>
                         </tr>
@@ -3248,256 +3458,427 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
     </div>
   )}
 
-      {/* ================= PURCHASE BILL DETAILS MODAL ================= */}
-      {detailsModalBill && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-800/40 backdrop-blur-sm overflow-y-auto">
-          <div className="relative w-full max-w-2xl bg-white border border-slate-200 rounded-3xl p-6 shadow-2xl my-auto space-y-5 text-slate-900">
-            {/* Modal Header */}
-            <div className="flex items-start justify-between pb-3 border-b border-slate-200">
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="text-base font-bold text-[#0F172A]">
-                    {detailsModalBill.supplier_name}
-                  </h3>
-                  <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-teal-50 text-[#0D9488] border border-teal-200 font-mono">
-                    Synchronized
-                  </span>
-                </div>
-                <p className="text-xs text-slate-500 font-mono mt-0.5">
-                  Bill #{detailsModalBill.bill_number} • Date:{' '}
-                  {detailsModalBill.bill_date || detailsModalBill.created_at?.slice(0, 10)}
-                </p>
-                {(detailsModalBill.supplier_gstin ||
-                  detailsModalBill.supplier_contact ||
-                  detailsModalBill.supplier_address) && (
-                  <div className="flex flex-wrap items-center gap-2.5 mt-2 text-[11px] text-slate-600">
-                    {detailsModalBill.supplier_gstin && (
-                      <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 text-[#0D9488] font-semibold">
-                        GSTIN: {detailsModalBill.supplier_gstin}
-                      </span>
-                    )}
-                    {detailsModalBill.supplier_contact && (
-                      <span className="flex items-center gap-1 font-mono">
-                        <Phone className="w-3 h-3 text-slate-400" />
-                        {detailsModalBill.supplier_contact}
-                      </span>
-                    )}
-                    {detailsModalBill.supplier_address && (
-                      <span className="flex items-center gap-1 truncate max-w-sm">
-                        <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
-                        {detailsModalBill.supplier_address}
-                      </span>
-                    )}
+      {/* ================= PURCHASE BILL DETAILS SPLIT-SCREEN MODAL (JAL JEEVAN HUB VIEWER) ================= */}
+      {detailsModalBill && (() => {
+        const lineItems = (detailsModalBill.items_json && detailsModalBill.items_json.length > 0)
+          ? detailsModalBill.items_json
+          : (detailsModalBill as any).items || [];
+
+        const totalTaxable = lineItems.reduce((acc: number, item: any) => {
+          const qty = Number(item.quantity ?? item.qty ?? 1);
+          const rate = Number(item.purchase_rate ?? item.rate ?? item.purchase_price ?? item.price_without_tax ?? 0);
+          const disc = Number(item.discount ?? 0);
+          const taxable = Number(item.price_without_tax ? item.price_without_tax * qty : Math.max(0, rate * qty - disc));
+          return acc + taxable;
+        }, 0) || Number(detailsModalBill.subtotal || 0);
+
+        const totalTax = lineItems.reduce((acc: number, item: any) => {
+          const qty = Number(item.quantity ?? item.qty ?? 1);
+          const rate = Number(item.purchase_rate ?? item.rate ?? item.purchase_price ?? item.price_without_tax ?? 0);
+          const disc = Number(item.discount ?? 0);
+          const taxable = Number(item.price_without_tax ? item.price_without_tax * qty : Math.max(0, rate * qty - disc));
+          const gstRate = Number(item.gst_rate ?? 0);
+          return acc + (taxable * (gstRate / 100));
+        }, 0) || Number(detailsModalBill.total_gst ?? (detailsModalBill as any).tax_amount ?? 0);
+
+        const grandTotal = Number(detailsModalBill.grand_total ?? (detailsModalBill as any).total_amount ?? (totalTaxable + totalTax));
+        const totalUnits = lineItems.reduce((acc: number, it: any) => acc + Number(it.quantity ?? it.qty ?? 1), 0);
+
+        const activeDoc = modalResolvedUrls[activeViewerDocIndex] || null;
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-700/40 backdrop-blur-sm animate-in fade-in duration-150">
+            <div className="relative w-full max-w-[97vw] h-[94vh] bg-white border border-slate-200 rounded-3xl shadow-2xl flex flex-col overflow-hidden text-slate-900">
+              {/* 1. Modal Header Bar */}
+              <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-3.5 border-b border-slate-200 bg-white shrink-0">
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-[#4338CA] shrink-0">
+                    <Receipt className="w-5 h-5" />
                   </div>
-                )}
-              </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-base font-bold text-[#0F172A] leading-tight">
+                        {detailsModalBill.supplier_name || (detailsModalBill as any).seller_name || 'Vendor Invoice'}
+                      </h3>
+                      <span className="font-mono text-xs font-bold px-2 py-0.5 rounded-lg bg-indigo-50 text-[#4338CA] border border-indigo-200">
+                        Invoice #{detailsModalBill.bill_number || (detailsModalBill as any).invoice_number || 'N/A'}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-3 text-xs text-slate-500 mt-1 font-mono">
+                      <span className="flex items-center gap-1 text-slate-600">
+                        <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                        {detailsModalBill.bill_date || (detailsModalBill as any).invoice_date || detailsModalBill.created_at?.slice(0, 10)}
+                      </span>
+                      {(detailsModalBill.supplier_gstin || (detailsModalBill as any).gstin) && (
+                        <span className="px-1.5 py-0.5 rounded bg-slate-100 border border-slate-200 text-slate-700 text-[11px] font-semibold">
+                          GSTIN: {detailsModalBill.supplier_gstin || (detailsModalBill as any).gstin}
+                        </span>
+                      )}
+                      {(detailsModalBill.supplier_contact || (detailsModalBill as any).phone) && (
+                        <span className="flex items-center gap-1 text-slate-500">
+                          <Phone className="w-3 h-3 text-slate-400" />
+                          {detailsModalBill.supplier_contact || (detailsModalBill as any).phone}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
 
-              <button
-                type="button"
-                onClick={() => setDetailsModalBill(null)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-700"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+                <div className="flex items-center gap-4">
+                  <div className="text-right">
+                    <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">
+                      Grand Total
+                    </span>
+                    <span className="text-xl font-black text-[#0D9488] font-mono">
+                      ₹{grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </span>
+                  </div>
 
-            {/* Financial Summary Breakdown */}
-            <div className="grid grid-cols-3 gap-3 p-3.5 rounded-2xl bg-slate-50 border border-slate-200 text-xs font-mono">
-              <div>
-                <span className="text-[10px] uppercase font-sans text-slate-500 block">
-                  Without Tax
-                </span>
-                <span className="text-sm font-bold text-slate-900">
-                  ₹{(Number(detailsModalBill.subtotal) || 0).toFixed(2)}
-                </span>
-              </div>
-              <div>
-                <span className="text-[10px] uppercase font-sans text-slate-500 block">
-                  Total Tax (GST)
-                </span>
-                <span className="text-sm font-bold text-[#0D9488]">
-                  +₹{(Number(detailsModalBill.total_gst) || 0).toFixed(2)}
-                </span>
-              </div>
-              <div>
-                <span className="text-[10px] uppercase font-sans text-slate-500 block">
-                  Grand Total
-                </span>
-                <span className="text-base font-black text-[#4338CA]">
-                  ₹{(Number(detailsModalBill.grand_total) || 0).toLocaleString('en-IN')}
-                </span>
-              </div>
-            </div>
-
-            {/* Line Items Table */}
-            {detailsModalBill.items_json && detailsModalBill.items_json.length > 0 && (
-              <div className="space-y-2">
-                <span className="text-xs font-bold text-[#0F172A]">
-                  Inward Items ({detailsModalBill.items_json.length})
-                </span>
-                <div className="rounded-xl border border-slate-200 overflow-hidden max-h-48 overflow-y-auto">
-                  <table className="w-full text-xs text-left">
-                    <thead className="bg-slate-50 text-[10px] uppercase font-semibold text-slate-600 border-b border-slate-200">
-                      <tr>
-                        <th className="py-2 px-3">Item & Category</th>
-                        <th className="py-2 px-3 text-center">Qty</th>
-                        <th className="py-2 px-3 text-right">Buy Excl.</th>
-                        <th className="py-2 px-3 text-right">MRP</th>
-                        <th className="py-2 px-3 text-center">GST%</th>
-                        <th className="py-2 px-3 text-right">Line Total</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {detailsModalBill.items_json.map((item, idx) => (
-                        <tr key={idx} className="hover:bg-slate-50/50">
-                          <td className="py-1.5 px-3">
-                            <span className="font-medium text-[#0F172A] block">
-                              {item.item_name || item.name}
-                            </span>
-                            {(item.barcode || item.category || item.sub_category) && (
-                              <div className="flex flex-wrap items-center gap-1.5 text-[10px] text-slate-500 mt-0.5">
-                                {item.barcode && (
-                                  <span className="font-mono bg-slate-100 px-1 rounded text-slate-600">
-                                    {item.barcode}
-                                  </span>
-                                )}
-                                {item.category && (
-                                  <span className="text-teal-700 font-medium">
-                                    {item.category}
-                                  </span>
-                                )}
-                                {item.sub_category && (
-                                  <span className="text-slate-400">
-                                    • {item.sub_category}
-                                  </span>
-                                )}
-                              </div>
-                            )}
-                          </td>
-                          <td className="py-1.5 px-3 text-center font-mono">
-                            {item.quantity ?? item.qty} {item.unit}
-                          </td>
-                          <td className="py-1.5 px-3 text-right font-mono">
-                            ₹{(Number(item.price_without_tax ?? item.purchase_price) || 0).toFixed(2)}
-                          </td>
-                          <td className="py-1.5 px-3 text-right font-mono text-[#4338CA] font-bold">
-                            {item.mrp !== null && item.mrp !== undefined && Number(item.mrp) > 0
-                              ? `₹${Number(item.mrp).toFixed(2)}`
-                              : item.selling_price !== null &&
-                                item.selling_price !== undefined &&
-                                Number(item.selling_price) > 0
-                              ? `₹${Number(item.selling_price).toFixed(2)}`
-                              : '-'}
-                          </td>
-                          <td className="py-1.5 px-3 text-center font-mono">
-                            {item.gst_rate}%
-                          </td>
-                          <td className="py-1.5 px-3 text-right font-mono font-bold text-slate-900">
-                            ₹{(Number(item.amount ?? item.total_amount) || 0).toFixed(2)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  <button
+                    type="button"
+                    onClick={() => setDetailsModalBill(null)}
+                    className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 transition-colors"
+                    title="Close"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
                 </div>
               </div>
-            )}
 
-            {/* Attached Invoices & PDF Inspection */}
-            <div className="space-y-2 pt-2 border-t border-slate-200">
-              <span className="text-xs font-bold text-[#0F172A] block">
-                Attached Invoices & Documents
-              </span>
+              {/* 2. Split-Screen Body */}
+              <div className="flex-1 flex flex-col lg:flex-row overflow-hidden min-h-0">
+                {/* Left Pane (Archived Bill Document Viewer) */}
+                <div className="w-full lg:w-1/2 flex flex-col border-b lg:border-b-0 lg:border-r border-slate-200 bg-slate-50/60 overflow-hidden">
+                  {/* Left Toolbar */}
+                  <div className="px-4 py-2 border-b border-slate-200 bg-white flex flex-wrap items-center justify-between gap-2 shrink-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                        <FileText className="w-4 h-4 text-[#4338CA]" />
+                        <span>Archived Bill</span>
+                      </span>
+                      {modalResolvedUrls.length > 1 && (
+                        <div className="flex items-center gap-1 ml-2">
+                          {modalResolvedUrls.map((_, dIdx) => (
+                            <button
+                              key={dIdx}
+                              type="button"
+                              onClick={() => {
+                                setActiveViewerDocIndex(dIdx);
+                                setViewerZoom(1);
+                                setViewerRotation(0);
+                              }}
+                              className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold transition-colors ${
+                                activeViewerDocIndex === dIdx
+                                  ? 'bg-[#4338CA] text-white'
+                                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                              }`}
+                            >
+                              Page {dIdx + 1}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
 
-              {loadingSignedUrls ? (
-                <div className="p-4 flex items-center justify-center gap-2 text-xs text-slate-500">
-                  <Loader2 className="w-4 h-4 animate-spin text-[#4338CA]" />
-                  <span>Loading attached invoice documents...</span>
-                </div>
-              ) : modalResolvedUrls.length === 0 ? (
-                <p className="text-xs text-slate-500 italic">No files attached to this bill.</p>
-              ) : (
-                <div className="space-y-2">
-                  {modalResolvedUrls.map((doc, idx) =>
-                    doc.isPdf ? (
-                      <a
-                        key={idx}
-                        href={doc.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center justify-between p-3.5 rounded-2xl border border-slate-200 bg-slate-50 hover:bg-indigo-50/40 hover:border-indigo-200 transition-all group"
+                    {/* Toolbar Controls */}
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setViewerRotation((prev) => (prev + 90) % 360)}
+                        className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs transition-colors flex items-center gap-1 font-semibold"
+                        title="Rotate 90°"
                       >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className="w-10 h-10 rounded-xl bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-600 shrink-0">
-                            <FileText className="w-5 h-5" />
-                          </div>
-                          <div className="min-w-0">
-                            <p className="text-xs font-bold text-[#0F172A] truncate max-w-[200px] sm:max-w-md">
-                              {doc.name}
-                            </p>
-                            <p className="text-[10px] text-slate-500 uppercase font-mono">
-                              PDF Invoice Document
-                            </p>
-                          </div>
-                        </div>
+                        <RotateCw className="w-3.5 h-3.5" />
+                        <span className="text-[10px] font-mono">90°</span>
+                      </button>
 
-                        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#4338CA] group-hover:bg-[#3730A3] text-white text-xs font-bold transition-colors shadow-xs shrink-0">
-                          <span>Open PDF Bill</span>
-                          <ExternalLink className="w-3.5 h-3.5" />
-                        </div>
-                      </a>
-                    ) : (
-                      <div
-                        key={idx}
-                        className="relative rounded-2xl border border-slate-200 overflow-hidden bg-slate-50 group flex items-center justify-between p-3"
+                      <button
+                        type="button"
+                        onClick={() => setViewerZoom((prev) => Math.max(0.5, prev - 0.25))}
+                        className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors"
+                        title="Zoom Out"
                       >
-                        <div className="flex items-center gap-3 min-w-0">
-                          <div className="w-12 h-12 rounded-xl border border-slate-200 overflow-hidden bg-white shrink-0">
-                            <img
-                              src={doc.url}
-                              alt={doc.name}
-                              className="w-full h-full object-cover"
-                            />
-                          </div>
-                          <div className="min-w-0">
-                            <p className="text-xs font-bold text-[#0F172A] truncate max-w-[180px] sm:max-w-xs">
-                              {doc.name}
-                            </p>
-                            <p className="text-[10px] text-slate-500 uppercase font-mono">
-                              Image Attachment
-                            </p>
-                          </div>
-                        </div>
+                        <ZoomOut className="w-3.5 h-3.5" />
+                      </button>
 
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setViewerZoom(1);
+                          setViewerRotation(0);
+                        }}
+                        className="px-2 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-mono font-semibold transition-colors"
+                        title="Reset 100%"
+                      >
+                        {Math.round(viewerZoom * 100)}%
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setViewerZoom((prev) => Math.min(3, prev + 0.25))}
+                        className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors"
+                        title="Zoom In"
+                      >
+                        <ZoomIn className="w-3.5 h-3.5" />
+                      </button>
+
+                      {activeDoc?.url && (
                         <a
-                          href={doc.url}
+                          href={activeDoc.url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-[#4338CA] hover:bg-slate-50 text-xs font-bold transition-colors shadow-xs shrink-0"
+                          className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-[#4338CA] transition-colors"
+                          title="Open in New Tab"
                         >
-                          <span>View Image</span>
                           <ExternalLink className="w-3.5 h-3.5" />
                         </a>
-                      </div>
-                    )
-                  )}
-                </div>
-              )}
-            </div>
+                      )}
+                    </div>
+                  </div>
 
-            {/* Modal Footer */}
-            <div className="pt-2 flex justify-end border-t border-slate-200">
-              <button
-                type="button"
-                onClick={() => setDetailsModalBill(null)}
-                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors"
-              >
-                Close
-              </button>
+                  {/* Document Viewer Frame */}
+                  <div className="flex-1 overflow-auto p-4 flex items-center justify-center relative bg-slate-100/70">
+                    {loadingSignedUrls ? (
+                      <div className="flex flex-col items-center gap-2 text-slate-500 text-xs">
+                        <Loader2 className="w-6 h-6 animate-spin text-[#4338CA]" />
+                        <span>Loading invoice document...</span>
+                      </div>
+                    ) : modalResolvedUrls.length === 0 ? (
+                      <div className="text-center p-8 space-y-2 text-slate-400">
+                        <FileText className="w-10 h-10 mx-auto text-slate-300" />
+                        <p className="text-xs font-medium">No archived document file attached to this bill</p>
+                      </div>
+                    ) : activeDoc?.isPdf ? (
+                      <iframe
+                        src={activeDoc.url}
+                        className="w-full h-full rounded-xl border border-slate-200 bg-white"
+                        title="PDF Invoice Document"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center overflow-hidden">
+                        <img
+                          src={activeDoc?.url}
+                          alt={activeDoc?.name || 'Invoice Scan'}
+                          style={{
+                            transform: `rotate(${viewerRotation}deg) scale(${viewerZoom})`,
+                            transformOrigin: 'center center',
+                            transition: 'transform 0.15s ease-out',
+                            maxHeight: '100%',
+                            maxWidth: '100%',
+                          }}
+                          className="object-contain rounded-lg shadow-sm"
+                        />
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Right Pane (Itemized Ledger Lines & Barcodes) */}
+                <div className="w-full lg:w-1/2 flex flex-col bg-white overflow-hidden">
+                  {/* Right Header */}
+                  <div className="px-4 py-2 border-b border-slate-200 bg-white flex items-center justify-between shrink-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-slate-800">
+                        Itemized Ledger Lines & Barcodes
+                      </span>
+                      <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-indigo-50 text-[#4338CA] border border-indigo-200">
+                        {lineItems.length} lines
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-slate-500 font-medium">
+                      Horizontal & Vertical Scrollable
+                    </span>
+                  </div>
+
+                  {/* Scrollable Table */}
+                  <div className="flex-1 overflow-x-auto overflow-y-auto">
+                    <table className="min-w-[1050px] w-full text-xs text-left border-collapse">
+                      <thead className="sticky top-0 z-10 bg-slate-100 text-[10px] uppercase font-bold text-slate-600 border-b border-slate-200 shadow-2xs">
+                        <tr>
+                          <th className="py-2.5 px-3">ITEM & BARCODE</th>
+                          <th className="py-2.5 px-2">HSN</th>
+                          <th className="py-2.5 px-2 text-center">QTY</th>
+                          <th className="py-2.5 px-2 text-center">UNIT</th>
+                          <th className="py-2.5 px-2 text-right">MRP</th>
+                          <th className="py-2.5 px-2 text-right">RATE</th>
+                          <th className="py-2.5 px-2 text-right">DISC</th>
+                          <th className="py-2.5 px-2 text-right">TAXABLE</th>
+                          <th className="py-2.5 px-2 text-center">GST %</th>
+                          <th className="py-2.5 px-2 text-right">TAXES (CGST/SGST)</th>
+                          <th className="py-2.5 px-2 text-right">LANDING COST/UNIT</th>
+                          <th className="py-2.5 px-2 text-right">MARGIN (₹ & %)</th>
+                          <th className="py-2.5 px-3 text-right">TOTAL</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {lineItems.map((item: any, idx: number) => {
+                          const qty = Number(item.quantity ?? item.qty ?? 1);
+                          const unit = (item.unit || 'PCS').toUpperCase();
+                          const mrp = Number(item.mrp ?? item.selling_price ?? 0);
+                          const rate = Number(item.purchase_rate ?? item.rate ?? item.purchase_price ?? item.price_without_tax ?? 0);
+                          const disc = Number(item.discount ?? 0);
+                          const taxable = Number(item.price_without_tax ? item.price_without_tax * qty : Math.max(0, rate * qty - disc));
+                          const gstRate = Number(item.gst_rate ?? 0);
+                          const taxAmount = taxable * (gstRate / 100);
+                          const lineTotal = Number(item.total ?? item.amount ?? item.total_amount ?? (taxable + taxAmount));
+                          const landingCostPerUnit = qty > 0 ? (lineTotal / qty) : rate;
+                          const marginRs = mrp > 0 ? mrp - landingCostPerUnit : 0;
+                          const marginPct = mrp > 0 ? (marginRs / mrp) * 100 : 0;
+
+                          return (
+                            <tr key={idx} className="hover:bg-slate-50/70 transition-colors">
+                              {/* ITEM & BARCODE */}
+                              <td className="py-2 px-3">
+                                <span className="font-semibold text-[#0F172A] block text-xs">
+                                  {item.item_name || item.name}
+                                </span>
+                                <div className="flex flex-wrap items-center gap-1.5 mt-0.5 text-[10px]">
+                                  {item.barcode && (
+                                    <span className="font-mono bg-slate-100 text-slate-600 px-1 py-0.2 rounded border border-slate-200">
+                                      {item.barcode}
+                                    </span>
+                                  )}
+                                  {item.category && (
+                                    <span className="text-[#4338CA] bg-indigo-50 px-1.5 py-0.2 rounded font-medium border border-indigo-100">
+                                      {item.category}
+                                    </span>
+                                  )}
+                                  {item.sub_category && (
+                                    <span className="text-slate-500">
+                                      {item.sub_category}
+                                    </span>
+                                  )}
+                                </div>
+                              </td>
+
+                              {/* HSN */}
+                              <td className="py-2 px-2 font-mono text-slate-700 text-[11px]">
+                                {item.hsn_code || '—'}
+                              </td>
+
+                              {/* QTY */}
+                              <td className="py-2 px-2 text-center font-mono font-bold text-slate-800">
+                                {qty}
+                              </td>
+
+                              {/* UNIT */}
+                              <td className="py-2 px-2 text-center font-mono text-[10px] text-slate-500 font-semibold uppercase">
+                                {unit}
+                              </td>
+
+                              {/* MRP */}
+                              <td className="py-2 px-2 text-right font-mono text-slate-700">
+                                {mrp > 0 ? `₹${mrp.toFixed(2)}` : '—'}
+                              </td>
+
+                              {/* RATE */}
+                              <td className="py-2 px-2 text-right font-mono text-slate-700">
+                                ₹{rate.toFixed(2)}
+                              </td>
+
+                              {/* DISC */}
+                              <td className="py-2 px-2 text-right font-mono text-slate-500">
+                                {disc > 0 ? `₹${disc.toFixed(2)}` : '—'}
+                              </td>
+
+                              {/* TAXABLE */}
+                              <td className="py-2 px-2 text-right font-mono font-semibold text-slate-800">
+                                ₹{taxable.toFixed(2)}
+                              </td>
+
+                              {/* GST % */}
+                              <td className="py-2 px-2 text-center font-mono text-slate-700">
+                                {gstRate}%
+                              </td>
+
+                              {/* TAXES (CGST/SGST) */}
+                              <td className="py-2 px-2 text-right font-mono text-[#0D9488]">
+                                <div>+₹{taxAmount.toFixed(2)}</div>
+                                {gstRate > 0 && (
+                                  <div className="text-[9px] text-slate-400">
+                                    {gstRate / 2}%+{gstRate / 2}%
+                                  </div>
+                                )}
+                              </td>
+
+                              {/* LANDING COST/UNIT */}
+                              <td className="py-2 px-2 text-right font-mono font-medium text-slate-800">
+                                ₹{landingCostPerUnit.toFixed(2)}
+                              </td>
+
+                              {/* MARGIN (₹ & %) */}
+                              <td className="py-2 px-2 text-right font-mono">
+                                {mrp > 0 ? (
+                                  <div>
+                                    <span className={`font-bold ${marginRs >= 0 ? 'text-[#0D9488]' : 'text-rose-600'}`}>
+                                      ₹{marginRs.toFixed(2)}
+                                    </span>
+                                    <span className={`block text-[10px] ${marginPct >= 0 ? 'text-[#0D9488]' : 'text-rose-600'}`}>
+                                      ({marginPct.toFixed(1)}%)
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <span className="text-slate-400">—</span>
+                                )}
+                              </td>
+
+                              {/* TOTAL */}
+                              <td className="py-2 px-3 text-right font-mono font-bold text-[#4338CA]">
+                                ₹{lineTotal.toFixed(2)}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+
+              {/* 3. Bottom Summary Footer */}
+              <div className="px-6 py-3 bg-slate-50 border-t border-slate-200 flex flex-wrap items-center justify-between gap-4 shrink-0">
+                <div className="flex items-center gap-4 text-xs font-medium text-slate-600">
+                  <span className="flex items-center gap-1.5">
+                    <PackageCheck className="w-4 h-4 text-[#4338CA]" />
+                    <span>Total Items: <strong className="text-slate-900 font-mono">{lineItems.length}</strong></span>
+                  </span>
+                  <span className="text-slate-300">|</span>
+                  <span>Total Units: <strong className="text-slate-900 font-mono">{totalUnits}</strong></span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-6 text-xs font-mono">
+                  <div>
+                    <span className="text-[10px] uppercase font-bold font-sans text-slate-500 block">
+                      Total Taxable
+                    </span>
+                    <span className="text-sm font-bold text-slate-900">
+                      ₹{totalTaxable.toFixed(2)}
+                    </span>
+                  </div>
+
+                  <div>
+                    <span className="text-[10px] uppercase font-bold font-sans text-slate-500 block">
+                      Total Tax
+                    </span>
+                    <span className="text-sm font-bold text-[#0D9488]">
+                      +₹{totalTax.toFixed(2)}
+                    </span>
+                  </div>
+
+                  <div>
+                    <span className="text-[10px] uppercase font-bold font-sans text-slate-500 block">
+                      Grand Total
+                    </span>
+                    <span className="text-base font-black text-[#4338CA]">
+                      ₹{grandTotal.toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ================= SCAN VIA PHONE QR MODAL ================= */}
       {phoneQrModalOpen && (
