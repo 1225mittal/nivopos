@@ -3,12 +3,13 @@
  * File: api/parse-purchase-bill.ts
  *
  * Serverless API using Groq AI OCR (qwen/qwen3.8-27b / llama-3.3-70b-versatile)
- * Extracts structured inventory line items and seller details from wholesaler / distributor purchase bills.
+ * Extracts structured inventory line items and seller details strictly from values
+ * explicitly printed on wholesaler / distributor purchase bills.
  */
 
 export interface ParsedBillItem {
   item_name: string;
-  mrp: number;
+  mrp: number | null;
   price_without_tax: number;
   gst_rate: number;
   price_after_tax: number;
@@ -22,7 +23,7 @@ export interface ParsedBillItem {
   qty: number;
   unit: string;
   purchase_price: number;
-  selling_price: number;
+  selling_price: number | null;
   total_amount: number;
 }
 
@@ -88,57 +89,50 @@ export default async function handler(req: any, res: any) {
       });
     }
 
-    const systemPrompt = `You are an expert Indian retail & Kirana tax invoice / wholesale purchase bill OCR parser.
-Extract seller details and line items strictly as valid JSON with NO markdown codeblocks or comments.
+    const systemPrompt = `You are a strict, precision Indian wholesale tax invoice / purchase bill OCR extraction engine.
+CRITICAL MANDATE:
+Extract ONLY information that is EXPLICITLY PRINTED on the document.
+DO NOT guess, DO NOT calculate, DO NOT estimate, and DO NOT infer any unprinted values.
+If any field or attribute is not explicitly printed in the text or table of the bill:
+- For text fields (category, sub_category, barcode, supplier_gstin, supplier_address, supplier_contact, supplier_email, supplier_fssai): return "" (empty string).
+- For mrp / selling_price: return null if there is no explicit "MRP" printed for that item. NEVER guess or estimate retail MRP from purchase rates.
 
-JSON Schema to follow:
+Output Schema strictly as valid JSON:
 {
-  "supplier_name": "Wholesaler / Distributor / Vendor Name",
-  "supplier_gstin": "15-digit GSTIN (or empty string if not found)",
-  "supplier_address": "Full registered address of the supplier (or empty string)",
-  "supplier_contact": "Phone / Mobile number of the supplier (or empty string)",
-  "supplier_email": "Email address of the supplier (or empty string)",
-  "supplier_fssai": "FSSAI License number of the supplier (or empty string)",
-  "bill_number": "Invoice / Bill / Challan Number",
-  "bill_date": "YYYY-MM-DD",
+  "supplier_name": "Exact seller business name printed on the invoice header, or empty string",
+  "supplier_gstin": "15-digit GSTIN printed on invoice, or empty string if not printed",
+  "supplier_address": "Seller address printed on invoice, or empty string if not printed",
+  "supplier_contact": "Seller phone / mobile printed on invoice, or empty string if not printed",
+  "supplier_email": "Seller email printed on invoice, or empty string if not printed",
+  "supplier_fssai": "Seller FSSAI license printed on invoice, or empty string if not printed",
+  "bill_number": "Invoice / bill / challan number printed, or empty string if not printed",
+  "bill_date": "Invoice date printed in YYYY-MM-DD format, or empty string if not printed",
   "items": [
     {
-      "item_name": "Product Name & Specification",
-      "mrp": 120.0,
-      "price_without_tax": 90.0,
-      "gst_rate": 5,
-      "price_after_tax": 94.5,
-      "quantity": 10,
-      "amount": 900.0,
-      "barcode": "8901030383921",
-      "category": "Grocery",
-      "sub_category": "Cooking Oil",
-      "unit": "pcs"
+      "item_name": "Exact product description / name printed on this line item",
+      "mrp": null, // ONLY a number if an explicit "MRP" column or label is printed for this item. Otherwise null.
+      "price_without_tax": 0.0, // Base rate / taxable rate per unit before GST if printed
+      "gst_rate": 0, // GST % slab printed (e.g. 0, 5, 12, 18, 28)
+      "price_after_tax": 0.0, // Gross unit rate including tax if printed
+      "quantity": 1, // Quantity printed
+      "amount": 0.0, // Line taxable or net amount printed
+      "barcode": "", // Barcode / EAN-13 / UPC ONLY if explicitly printed on the bill, else ""
+      "category": "", // Category ONLY if explicitly printed on the bill, else ""
+      "sub_category": "", // Sub-category ONLY if explicitly printed on the bill, else ""
+      "unit": "pcs" // Unit printed (e.g. "pcs", "kg", "pack", "box", "ltr", "gm") or "pcs"
     }
   ],
-  "subtotal": 900.0,
-  "total_gst": 45.0,
-  "grand_total": 945.0
+  "subtotal": 0.0, // Taxable subtotal printed on bill
+  "total_gst": 0.0, // Total tax amount printed on bill
+  "grand_total": 0.0 // Grand total / net invoice amount printed on bill
 }
 
 Rules:
-1. Seller Details:
-   - Identify the SELLER (wholesaler, distributor, company issuing the bill), NOT the buyer/retailer.
-   - Extract supplier_name, supplier_gstin, supplier_address, supplier_contact, supplier_email, supplier_fssai. If any field is not found on the bill, return an empty string "".
-   - Standardize bill_date to YYYY-MM-DD format if readable.
-2. Line Items:
-   - item_name: Full brand name, variant, and pack size (e.g., "Fortune Sunlite Refined Oil 1L Pouch").
-   - mrp: Maximum Retail Price printed on invoice/pack.
-   - price_without_tax: Tax-exclusive purchase rate per unit before GST.
-   - gst_rate: Standard Indian GST rate (0, 5, 12, 18, or 28).
-   - price_after_tax: Tax-inclusive purchase rate per unit.
-   - quantity: Billed quantity (number).
-   - amount: Line taxable or total amount.
-   - barcode: Numeric barcode, EAN-13, or UPC if printed on bill, else empty string "".
-   - category: Primary category (e.g., "Grocery", "FMCG Packaged Foods", "Dairy & Bakery", "Beverages", "Personal Care", "Household Care", "Snacks & Confectionery").
-   - sub_category: Specific sub-category (e.g., "Edible Oil", "Flour & Atta", "Detergent", "Biscuits", "Spices", "Shampoo", "Soap").
-   - unit: "pcs", "kg", "pack", "box", "ltr", "gm".
-3. Numbers must be numeric floats or integers (not strings).`;
+1. Seller vs Buyer: Extract details of the SELLER / DISTRIBUTOR (the issuer of the bill), NOT the buyer / consignee.
+2. Absolutely NO Category or Sub-Category Hallucination: Wholesale bills almost never print retail categories. Unless the invoice explicitly contains a "Category" or "Department" column, return "" for category and sub_category.
+3. Absolutely NO MRP Guessing: Most B2B wholesale invoices only list wholesale buy rates (Base Rate, Taxable Value, GST). Do NOT multiply by 1.2 or estimate MRP. If no MRP is printed, return null.
+4. Barcode: If no barcode digits are printed on the bill line, return "".
+5. Numbers must be numeric (e.g. 10, 45.5, null) not strings.`;
 
     let groqPayload: any;
 
@@ -147,7 +141,7 @@ Rules:
       const userContent: any[] = [
         {
           type: 'text',
-          text: 'Extract seller details (supplier_name, supplier_gstin, supplier_address, supplier_contact, supplier_email, supplier_fssai, bill_number, bill_date) and all line items (item_name, mrp, price_without_tax, gst_rate, price_after_tax, quantity, amount, barcode, category, sub_category) across all pages of this Indian wholesale purchase bill / delivery challan into JSON.',
+          text: 'Strictly extract only explicitly printed seller details and line items from this wholesale invoice. Do not guess, estimate or invent unprinted fields. Return JSON.',
         },
       ];
 
@@ -165,7 +159,7 @@ Rules:
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userContent },
         ],
-        temperature: 0.1,
+        temperature: 0.0,
         response_format: { type: 'json_object' },
       };
     } else {
@@ -176,10 +170,10 @@ Rules:
           { role: 'system', content: systemPrompt },
           {
             role: 'user',
-            content: `Extract seller details and all line items from this bill text:\n\n${text}`,
+            content: `Strictly extract only explicitly printed seller details and line items from this invoice text. Do not guess, estimate or invent unprinted fields:\n\n${text}`,
           },
         ],
-        temperature: 0.1,
+        temperature: 0.0,
         response_format: { type: 'json_object' },
       };
     }
@@ -221,67 +215,72 @@ Rules:
 
     const parsed: any = JSON.parse(cleanedJson);
 
-    // Sanitize and cleanly compute missing numbers for each line item
+    // Sanitize and strictly preserve ONLY explicitly extracted numbers, without estimating MRP or categories
     const sanitizedItems: ParsedBillItem[] = (parsed.items || []).map((rawItem: any) => {
-      const itemName = String(rawItem.item_name || rawItem.name || 'Stock Item').trim();
+      const itemName = String(rawItem.item_name || rawItem.name || '').trim();
       const quantity = Math.max(1, Number(rawItem.quantity ?? rawItem.qty) || 1);
       const gstRate = Math.max(0, Number(rawItem.gst_rate) || 0);
 
       let priceWithoutTax = Number(rawItem.price_without_tax ?? rawItem.purchase_price) || 0;
       let priceAfterTax = Number(rawItem.price_after_tax) || 0;
       let amount = Number(rawItem.amount ?? rawItem.total_amount) || 0;
-      let mrp = Number(rawItem.mrp ?? rawItem.selling_price) || 0;
 
-      // Deduction 1: If price_without_tax is known but price_after_tax is missing
+      // Extract MRP strictly: null if missing, empty, or not a positive number
+      let mrp: number | null = null;
+      if (
+        rawItem.mrp !== null &&
+        rawItem.mrp !== undefined &&
+        rawItem.mrp !== '' &&
+        !isNaN(Number(rawItem.mrp)) &&
+        Number(rawItem.mrp) > 0
+      ) {
+        mrp = Math.round(Number(rawItem.mrp) * 100) / 100;
+      } else if (
+        rawItem.selling_price !== null &&
+        rawItem.selling_price !== undefined &&
+        rawItem.selling_price !== '' &&
+        !isNaN(Number(rawItem.selling_price)) &&
+        Number(rawItem.selling_price) > 0
+      ) {
+        mrp = Math.round(Number(rawItem.selling_price) * 100) / 100;
+      }
+
+      // Mathematical deductions ONLY between purchase price, GST rate, and line amount
+      // 1. If base price without tax is printed, but price after tax is missing:
       if (priceWithoutTax > 0 && priceAfterTax <= 0) {
         priceAfterTax = Math.round(priceWithoutTax * (1 + gstRate / 100) * 100) / 100;
       }
-      // Deduction 2: If price_after_tax is known but price_without_tax is missing
+      // 2. If price after tax is printed, but base price is missing:
       else if (priceAfterTax > 0 && priceWithoutTax <= 0) {
         priceWithoutTax =
           gstRate > 0
             ? Math.round((priceAfterTax / (1 + gstRate / 100)) * 100) / 100
             : priceAfterTax;
       }
-      // Deduction 3: If both unit rates are missing, compute from amount and quantity or MRP
-      else if (priceWithoutTax <= 0 && priceAfterTax <= 0) {
-        if (amount > 0 && quantity > 0) {
-          priceWithoutTax = Math.round((amount / quantity) * 100) / 100;
-          priceAfterTax = Math.round(priceWithoutTax * (1 + gstRate / 100) * 100) / 100;
-        } else if (mrp > 0) {
-          // Estimate wholesale buy rate at ~82% of MRP
-          priceAfterTax = Math.round(mrp * 0.82 * 100) / 100;
-          priceWithoutTax =
-            gstRate > 0
-              ? Math.round((priceAfterTax / (1 + gstRate / 100)) * 100) / 100
-              : priceAfterTax;
-        }
+      // 3. If unit price is missing but line amount and quantity are printed:
+      else if (priceWithoutTax <= 0 && priceAfterTax <= 0 && amount > 0 && quantity > 0) {
+        priceWithoutTax = Math.round((amount / quantity) * 100) / 100;
+        priceAfterTax = Math.round(priceWithoutTax * (1 + gstRate / 100) * 100) / 100;
       }
 
-      // Deduction 4: If line amount is missing or 0, compute from quantity * price_without_tax
-      if (amount <= 0) {
+      // 4. If line amount is missing or 0, compute from quantity * price_without_tax
+      if (amount <= 0 && priceWithoutTax > 0) {
         amount = Math.round(quantity * priceWithoutTax * 100) / 100;
       }
 
-      // Deduction 5: If MRP is missing or 0, estimate standard 20% retail markup
-      if (mrp <= 0) {
-        const baseForMrp = priceAfterTax > 0 ? priceAfterTax : priceWithoutTax;
-        mrp = Math.round(baseForMrp * 1.2 * 100) / 100;
-      }
-
+      // Text fields strictly empty string if not explicitly extracted
       const barcode = String(rawItem.barcode || '').trim();
-      const category = String(rawItem.category || 'General').trim();
+      const category = String(rawItem.category || '').trim();
       const subCategory = String(rawItem.sub_category || '').trim();
       const unit = String(rawItem.unit || 'pcs').toLowerCase().trim();
 
-      const roundedMrp = Math.round(mrp * 100) / 100;
       const roundedWithoutTax = Math.round(priceWithoutTax * 100) / 100;
       const roundedAfterTax = Math.round(priceAfterTax * 100) / 100;
       const roundedAmount = Math.round(amount * 100) / 100;
 
       return {
         item_name: itemName,
-        mrp: roundedMrp,
+        mrp: mrp,
         price_without_tax: roundedWithoutTax,
         gst_rate: gstRate,
         price_after_tax: roundedAfterTax,
@@ -295,7 +294,7 @@ Rules:
         qty: quantity,
         unit: unit,
         purchase_price: roundedWithoutTax,
-        selling_price: roundedMrp,
+        selling_price: mrp,
         total_amount: roundedAmount,
       };
     });
@@ -316,14 +315,14 @@ Rules:
     return res.status(200).json({
       success: true,
       data: {
-        supplier_name: String(parsed.supplier_name || 'Wholesale Supplier').trim(),
+        supplier_name: String(parsed.supplier_name || '').trim(),
         supplier_gstin: String(parsed.supplier_gstin || '').trim(),
         supplier_address: String(parsed.supplier_address || '').trim(),
         supplier_contact: String(parsed.supplier_contact || '').trim(),
         supplier_email: String(parsed.supplier_email || '').trim(),
         supplier_fssai: String(parsed.supplier_fssai || '').trim(),
-        bill_number: String(parsed.bill_number || `PB-${Date.now().toString().slice(-6)}`).trim(),
-        bill_date: String(parsed.bill_date || new Date().toISOString().slice(0, 10)).trim(),
+        bill_number: String(parsed.bill_number || '').trim(),
+        bill_date: String(parsed.bill_date || '').trim(),
         items: sanitizedItems,
         subtotal: Math.round(subtotal * 100) / 100,
         total_gst: Math.round(totalGst * 100) / 100,

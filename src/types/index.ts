@@ -140,12 +140,12 @@ export interface PurchaseBillItem {
   qty: number;
   unit: string;
   purchase_price: number;
-  selling_price?: number;
+  selling_price?: number | null;
   gst_rate: number;
   total_amount: number;
   // Groq OCR enriched fields
   item_name?: string;
-  mrp?: number;
+  mrp?: number | null;
   price_without_tax?: number;
   price_after_tax?: number;
   quantity?: number;

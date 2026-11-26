@@ -261,7 +261,7 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
             const cat = p.category.trim();
             catSet.add(cat);
             if (!subCatMap[cat]) {
-              subCatMap[cat] = new Set(['General', 'Other']);
+              subCatMap[cat] = new Set<string>();
             }
             if (p.sub_category && p.sub_category.trim()) {
               subCatMap[cat].add(p.sub_category.trim());
@@ -551,7 +551,7 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
       }
 
       const data: PurchaseBillData = result.data;
-      setSupplierName(data.supplier_name || 'Wholesale Supplier');
+      setSupplierName(data.supplier_name || '');
       setSupplierGstin(data.supplier_gstin || '');
       setSupplierAddress(data.supplier_address || '');
       setSupplierContact(data.supplier_contact || '');
@@ -568,40 +568,50 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
           const rateWithTax =
             Number(it.price_after_tax) ||
             Math.round(buyRate * (1 + gstRate / 100) * 100) / 100;
+
+          // Strictly preserve null if MRP was not explicitly printed on invoice
           const mrp =
-            Number(it.mrp ?? it.selling_price) || Math.round(rateWithTax * 1.2 * 100) / 100;
+            it.mrp !== null &&
+            it.mrp !== undefined &&
+            !isNaN(Number(it.mrp)) &&
+            Number(it.mrp) > 0
+              ? Math.round(Number(it.mrp) * 100) / 100
+              : null;
+
+          const sellPrice =
+            it.selling_price !== null &&
+            it.selling_price !== undefined &&
+            !isNaN(Number(it.selling_price)) &&
+            Number(it.selling_price) > 0
+              ? Math.round(Number(it.selling_price) * 100) / 100
+              : mrp;
+
           const lineAmount =
             Number(it.amount ?? it.total_amount) || Math.round(qty * buyRate * 100) / 100;
 
-          // Normalize category to one of storeCategories or fallback
-          let cat = it.category?.trim() || 'Groceries & Staples';
-          if (!storeCategories.includes(cat)) {
-            // Find closest match
-            const matched = storeCategories.find(
-              (c) => c.toLowerCase().includes(cat.toLowerCase()) || cat.toLowerCase().includes(c.toLowerCase())
-            );
-            if (matched) cat = matched;
-          }
+          const cat = it.category?.trim() || '';
+          const subCat = it.sub_category?.trim() || '';
+          const barcode = it.barcode?.trim() || '';
 
           return {
             ...it,
             id: `${Date.now()}-${idx}`,
-            name: it.item_name || it.name || 'Stock Item',
-            item_name: it.item_name || it.name || 'Stock Item',
+            name: it.item_name || it.name || '',
+            item_name: it.item_name || it.name || '',
             qty: qty,
             quantity: qty,
             unit: it.unit || 'pcs',
             purchase_price: buyRate,
             price_without_tax: buyRate,
             price_after_tax: rateWithTax,
-            selling_price: mrp,
+            selling_price: sellPrice,
             mrp: mrp,
             gst_rate: gstRate,
             total_amount: lineAmount,
             amount: lineAmount,
-            barcode: it.barcode || '',
+            barcode: barcode,
             category: cat,
-            sub_category: it.sub_category || '',
+            sub_category: subCat,
           };
         })
       );
@@ -673,17 +683,18 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
             updated.price_after_tax = Math.round(buyRate * (1 + gst / 100) * 100) / 100;
           }
         } else if (field === 'mrp' || field === 'selling_price') {
-          const sellVal = Math.max(0, parseFloat(value) || 0);
+          const sellVal =
+            value === '' || value === null || value === undefined
+              ? null
+              : Math.max(0, parseFloat(value) || 0);
           updated.mrp = sellVal;
           updated.selling_price = sellVal;
         } else if (field === 'category') {
-          updated.category = String(value);
-          const availableSubs = storeSubCategories[String(value)] || [];
-          if (
-            availableSubs.length > 0 &&
-            (!updated.sub_category || !availableSubs.includes(updated.sub_category))
-          ) {
-            updated.sub_category = availableSubs[0];
+          const newCat = String(value);
+          updated.category = newCat;
+          const availableSubs = newCat ? storeSubCategories[newCat] || [] : [];
+          if (updated.sub_category && !availableSubs.includes(updated.sub_category)) {
+            updated.sub_category = '';
           }
         } else if (field === 'sub_category') {
           updated.sub_category = String(value);
@@ -698,9 +709,6 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
 
   // Add Empty Line Item Manually
   const handleAddManualItem = () => {
-    const defaultCat = storeCategories[0] || 'Groceries & Staples';
-    const defaultSub = (storeSubCategories[defaultCat] || ['General'])[0] || 'General';
-
     const newItem: PurchaseBillItem = {
       id: Date.now().toString(),
       name: '',
@@ -711,14 +719,14 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
       purchase_price: 0,
       price_without_tax: 0,
       price_after_tax: 0,
-      selling_price: 0,
-      mrp: 0,
+      selling_price: null,
+      mrp: null,
       gst_rate: 5,
       total_amount: 0,
       amount: 0,
       barcode: '',
-      category: defaultCat,
-      sub_category: defaultSub,
+      category: '',
+      sub_category: '',
     };
     setItems((prev) => [...prev, newItem]);
   };
@@ -893,7 +901,7 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
       for (const item of items) {
         const trimmedName = (item.item_name || item.name || '').trim();
         const trimmedBarcode = item.barcode?.trim() || null;
-        const trimmedCategory = (item.category || 'Groceries & Staples').trim();
+        const trimmedCategory = (item.category || '').trim();
         const trimmedSubCategory = item.sub_category?.trim() || null;
         const unit = item.unit || 'pcs';
 
@@ -913,8 +921,20 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
         }
 
         const buyPrice = Number(item.price_without_tax ?? item.purchase_price) || 0;
-        const sellPrice =
-          Number(item.mrp ?? item.selling_price) || Math.round(buyPrice * 1.2 * 100) / 100;
+        // Do NOT auto-calculate MRP from buy rate (never guess with buyPrice * 1.2)
+        const mrpVal =
+          item.mrp !== null &&
+          item.mrp !== undefined &&
+          !isNaN(Number(item.mrp)) &&
+          Number(item.mrp) > 0
+            ? Math.round(Number(item.mrp) * 100) / 100
+            : item.selling_price !== null &&
+              item.selling_price !== undefined &&
+              !isNaN(Number(item.selling_price)) &&
+              Number(item.selling_price) > 0
+            ? Math.round(Number(item.selling_price) * 100) / 100
+            : 0;
+        const sellPrice = mrpVal;
         const qty = Number(item.quantity ?? item.qty) || 1;
         const gstRate = Number(item.gst_rate) || 0;
 
@@ -923,14 +943,22 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
           const newStock = (Number(existing.stock_qty) || 0) + qty;
           const updateData: any = {
             stock_qty: newStock,
-            mrp: sellPrice,
-            selling_price: sellPrice,
             purchase_price: buyPrice,
             gst_rate: gstRate,
-            category: trimmedCategory || existing.category,
-            sub_category: trimmedSubCategory || (existing as any).sub_category,
           };
-          if (trimmedBarcode) updateData.barcode = trimmedBarcode;
+          if (sellPrice > 0) {
+            updateData.mrp = sellPrice;
+            updateData.selling_price = sellPrice;
+          }
+          if (trimmedCategory) {
+            updateData.category = trimmedCategory;
+          }
+          if (trimmedSubCategory) {
+            updateData.sub_category = trimmedSubCategory;
+          }
+          if (trimmedBarcode) {
+            updateData.barcode = trimmedBarcode;
+          }
 
           let { error: updateErr } = await supabase
             .from('products')
@@ -1180,10 +1208,10 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
         </div>
       )}
 
-      {/* STEP 1 & STEP 2 WORKSPACE */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* STEP 1: UPLOAD / SCAN / PASTE CARD (LEFT 4 COLS) */}
-        <div className="lg:col-span-4 space-y-4">
+      {/* STEP 1 & STEP 2 WORKSPACE (FULL-WIDTH VERTICAL STACK) */}
+      <div className="space-y-6 w-full">
+        {/* STEP 1: UPLOAD / SCAN / PASTE CARD (FULL WIDTH) */}
+        <div className="w-full space-y-4">
           <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-4">
             {/* Input Mode Selector */}
             <div className="flex items-center justify-between pb-3 border-b border-slate-200">
@@ -1229,120 +1257,129 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
                   className="hidden"
                 />
 
-                {/* Dropzone Box */}
+                {/* Dropzone & Selected Files in a wide responsive layout */}
                 <div
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    setIsDragOver(true);
-                  }}
-                  onDragLeave={() => setIsDragOver(false)}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    setIsDragOver(false);
-                    handleFiles(e.dataTransfer.files);
-                  }}
-                  onClick={() => fileInputRef.current?.click()}
-                  className={`p-6 rounded-2xl border-2 border-dashed cursor-pointer text-center space-y-2 transition-colors ${
-                    isDragOver
-                      ? 'border-[#4338CA] bg-indigo-50/50'
-                      : 'border-slate-300 hover:border-[#4338CA] bg-slate-50/60 hover:bg-slate-50'
-                  }`}
+                  className={`grid grid-cols-1 ${
+                    selectedFiles.length > 0 ? 'lg:grid-cols-12' : ''
+                  } gap-4 items-start`}
                 >
-                  <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-[#4338CA] mx-auto shadow-xs">
-                    <Upload className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold text-[#0F172A]">
-                      Drop PDF Invoice or Bill Photos here
-                    </p>
-                    <p className="text-[11px] text-slate-500 mt-0.5">
-                      Supports PDF, JPEG, PNG, WebP (multiple files allowed)
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      fileInputRef.current?.click();
-                    }}
-                    className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-white border border-slate-200 text-xs font-semibold text-[#4338CA] shadow-xs hover:bg-slate-50 mt-1"
-                  >
-                    <Plus className="w-3.5 h-3.5" />
-                    <span>Browse Files</span>
-                  </button>
-                </div>
-
-                {/* Selected Files List with Badges & Thumbnails */}
-                {selectedFiles.length > 0 && (
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between text-xs font-semibold text-slate-600 px-1">
-                      <span>Selected Files ({selectedFiles.length})</span>
+                  <div className={selectedFiles.length > 0 ? 'lg:col-span-6' : 'w-full'}>
+                    {/* Dropzone Box */}
+                    <div
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        setIsDragOver(true);
+                      }}
+                      onDragLeave={() => setIsDragOver(false)}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        setIsDragOver(false);
+                        handleFiles(e.dataTransfer.files);
+                      }}
+                      onClick={() => fileInputRef.current?.click()}
+                      className={`p-6 rounded-2xl border-2 border-dashed cursor-pointer text-center space-y-2 transition-colors ${
+                        isDragOver
+                          ? 'border-[#4338CA] bg-indigo-50/50'
+                          : 'border-slate-300 hover:border-[#4338CA] bg-slate-50/60 hover:bg-slate-50'
+                      }`}
+                    >
+                      <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-[#4338CA] mx-auto shadow-xs">
+                        <Upload className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-[#0F172A]">
+                          Drop PDF Invoice or Bill Photos here
+                        </p>
+                        <p className="text-[11px] text-slate-500 mt-0.5">
+                          Supports PDF, JPEG, PNG, WebP (multiple files allowed)
+                        </p>
+                      </div>
                       <button
                         type="button"
-                        onClick={clearAllSelectedFiles}
-                        className="text-rose-600 hover:underline text-[11px]"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          fileInputRef.current?.click();
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-white border border-slate-200 text-xs font-semibold text-[#4338CA] shadow-xs hover:bg-slate-50 mt-1"
                       >
-                        Clear All
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Browse Files</span>
                       </button>
                     </div>
+                  </div>
 
-                    <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
-                      {selectedFiles.map((fileInfo) => (
-                        <div
-                          key={fileInfo.id}
-                          className="flex items-center justify-between p-2.5 rounded-xl border border-slate-200 bg-white shadow-xs text-xs"
+                  {/* Selected Files List with Badges & Thumbnails */}
+                  {selectedFiles.length > 0 && (
+                    <div className="lg:col-span-6 space-y-2">
+                      <div className="flex items-center justify-between text-xs font-semibold text-slate-600 px-1">
+                        <span>Selected Files ({selectedFiles.length})</span>
+                        <button
+                          type="button"
+                          onClick={clearAllSelectedFiles}
+                          className="text-rose-600 hover:underline text-[11px]"
                         >
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            {fileInfo.type === 'pdf' ? (
-                              <div className="w-8 h-8 rounded-lg bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-600 shrink-0">
-                                <FileText className="w-4 h-4" />
-                              </div>
-                            ) : (
-                              <div className="w-8 h-8 rounded-lg border border-slate-200 overflow-hidden bg-slate-50 shrink-0 flex items-center justify-center">
-                                {fileInfo.previewUrl ? (
-                                  <img
-                                    src={fileInfo.previewUrl}
-                                    alt="thumb"
-                                    className="w-full h-full object-cover"
-                                  />
-                                ) : (
-                                  <ImageIcon className="w-4 h-4 text-slate-400" />
-                                )}
-                              </div>
-                            )}
+                          Clear All
+                        </button>
+                      </div>
 
-                            <div className="min-w-0">
-                              <p className="font-semibold text-[#0F172A] truncate max-w-[170px] sm:max-w-xs">
-                                {fileInfo.name}
-                              </p>
-                              <div className="flex items-center gap-1.5 text-[10px] text-slate-500">
-                                <span
-                                  className={`px-1.5 py-0.2 rounded font-mono font-bold ${
-                                    fileInfo.type === 'pdf'
-                                      ? 'bg-rose-50 text-rose-700 border border-rose-200'
-                                      : 'bg-indigo-50 text-[#4338CA] border border-indigo-200'
-                                  }`}
-                                >
-                                  {fileInfo.type === 'pdf' ? 'PDF' : 'IMAGE'}
-                                </span>
-                                <span>{formatFileSize(fileInfo.size)}</span>
+                      <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                        {selectedFiles.map((fileInfo) => (
+                          <div
+                            key={fileInfo.id}
+                            className="flex items-center justify-between p-2.5 rounded-xl border border-slate-200 bg-white shadow-xs text-xs"
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              {fileInfo.type === 'pdf' ? (
+                                <div className="w-8 h-8 rounded-lg bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-600 shrink-0">
+                                  <FileText className="w-4 h-4" />
+                                </div>
+                              ) : (
+                                <div className="w-8 h-8 rounded-lg border border-slate-200 overflow-hidden bg-slate-50 shrink-0 flex items-center justify-center">
+                                  {fileInfo.previewUrl ? (
+                                    <img
+                                      src={fileInfo.previewUrl}
+                                      alt="thumb"
+                                      className="w-full h-full object-cover"
+                                    />
+                                  ) : (
+                                    <ImageIcon className="w-4 h-4 text-slate-400" />
+                                  )}
+                                </div>
+                              )}
+
+                              <div className="min-w-0">
+                                <p className="font-semibold text-[#0F172A] truncate max-w-[200px] sm:max-w-xs">
+                                  {fileInfo.name}
+                                </p>
+                                <div className="flex items-center gap-1.5 text-[10px] text-slate-500">
+                                  <span
+                                    className={`px-1.5 py-0.2 rounded font-mono font-bold ${
+                                      fileInfo.type === 'pdf'
+                                        ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                                        : 'bg-indigo-50 text-[#4338CA] border border-indigo-200'
+                                    }`}
+                                  >
+                                    {fileInfo.type === 'pdf' ? 'PDF' : 'IMAGE'}
+                                  </span>
+                                  <span>{formatFileSize(fileInfo.size)}</span>
+                                </div>
                               </div>
                             </div>
-                          </div>
 
-                          <button
-                            type="button"
-                            onClick={() => removeSelectedFile(fileInfo.id)}
-                            className="p-1 rounded-lg text-slate-400 hover:text-rose-600 transition-colors"
-                            title="Remove file"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      ))}
+                            <button
+                              type="button"
+                              onClick={() => removeSelectedFile(fileInfo.id)}
+                              className="p-1 rounded-lg text-slate-400 hover:text-rose-600 transition-colors"
+                              title="Remove file"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
             ) : (
               <div className="space-y-2">
@@ -1350,7 +1387,7 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
                   Paste Wholesaler Bill / WhatsApp Order Text
                 </label>
                 <textarea
-                  rows={6}
+                  rows={4}
                   value={rawText}
                   onChange={(e) => setRawText(e.target.value)}
                   placeholder="Paste text like:&#10;Metro Cash & Carry - Inv #98421&#10;1. Fortune Sunlite Oil 1L x 24 packs @ 118&#10;2. Aashirvaad Atta 10kg x 15 @ 365..."
@@ -1382,26 +1419,24 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
                 </>
               )}
             </button>
-          </div>
 
-          {/* Quick Tips Box */}
-          <div className="p-4 rounded-2xl bg-teal-50/50 border border-teal-200 text-slate-700 text-xs space-y-1.5">
-            <div className="flex items-center gap-1.5 font-bold text-[#0D9488]">
-              <PackageCheck className="w-4 h-4 shrink-0" />
-              <span>Automated Kirana Inward System</span>
+            {/* Quick Tips Box (Tucked cleanly inside Section 1) */}
+            <div className="p-3.5 rounded-xl bg-teal-50/50 border border-teal-200 text-slate-700 text-xs flex flex-col md:flex-row md:items-center justify-between gap-2.5">
+              <div className="flex items-center gap-2 font-bold text-[#0D9488] shrink-0">
+                <PackageCheck className="w-4 h-4" />
+                <span>Automated Kirana Inward System:</span>
+              </div>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-600">
+                <span>• <b>Suppliers Directory:</b> Verified in <code>public.suppliers</code> by GSTIN/Name</span>
+                <span>• <b>Product Master Sync:</b> Items, barcodes & categories auto-upserted to <code>public.products</code></span>
+                <span>• <b>Live Stock:</b> Existing catalog inventory incremented automatically</span>
+              </div>
             </div>
-            <p className="text-[11px] text-slate-600 leading-relaxed">
-              • <b>Suppliers Directory:</b> Verified distributors are registered in <code>public.suppliers</code> by GSTIN or Name.
-              <br />
-              • <b>Product Master Sync:</b> Every line item with its category, sub-category, barcode, and rates is directly upserted into <code>public.products</code>.
-              <br />
-              • <b>Stock Increment:</b> Existing catalog stocks are incremented automatically.
-            </p>
           </div>
         </div>
 
-        {/* STEP 2: REVIEW & EDIT EXTRACTED SELLER & ITEMS (RIGHT 8 COLS) */}
-        <div className="lg:col-span-8 space-y-4">
+        {/* STEP 2: REVIEW & EDIT EXTRACTED SELLER & ITEMS (FULL WIDTH) */}
+        <div className="w-full space-y-4">
           <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-5">
             {/* Section Header */}
             <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-200">
@@ -1584,7 +1619,7 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
                 <div className="p-12 text-center space-y-2.5 bg-slate-50/60 rounded-2xl border border-dashed border-slate-200">
                   <PackageCheck className="w-8 h-8 text-slate-300 mx-auto" />
                   <p className="text-xs text-slate-500 font-medium">
-                    No items extracted yet. Upload a wholesale invoice PDF / photo or paste bill text on the left.
+                    No items extracted yet. Upload a wholesale invoice PDF / photo or paste bill text above.
                   </p>
                   <button
                     type="button"
@@ -1598,11 +1633,9 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
               ) : (
                 <div className="space-y-3 max-h-[560px] overflow-y-auto pr-1">
                   {items.map((item, index) => {
-                    const itemCategory = item.category || 'Groceries & Staples';
-                    const availableSubCats = storeSubCategories[itemCategory] || [
-                      'General',
-                      'Other',
-                    ];
+                    const availableSubCats = item.category
+                      ? storeSubCategories[item.category] || []
+                      : [];
 
                     return (
                       <div
@@ -1661,12 +1694,13 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
                               Category
                             </label>
                             <select
-                              value={item.category || storeCategories[0]}
+                              value={item.category || ''}
                               onChange={(e) =>
                                 updateItem(item.id || '', 'category', e.target.value)
                               }
                               className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs text-slate-800 font-medium focus:outline-none focus:border-[#4338CA]"
                             >
+                              <option value="">Select Category</option>
                               {storeCategories.map((cat) => (
                                 <option key={cat} value={cat}>
                                   {cat}
@@ -1680,12 +1714,13 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
                               Sub-Category
                             </label>
                             <select
-                              value={item.sub_category || availableSubCats[0] || 'General'}
+                              value={item.sub_category || ''}
                               onChange={(e) =>
                                 updateItem(item.id || '', 'sub_category', e.target.value)
                               }
                               className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs text-slate-800 font-medium focus:outline-none focus:border-[#4338CA]"
                             >
+                              <option value="">Select Sub-Category</option>
                               {availableSubCats.map((sub) => (
                                 <option key={sub} value={sub}>
                                   {sub}
@@ -1799,7 +1834,7 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
                             />
                           </div>
 
-                          {/* MRP / Sell Rate */}
+                          {/* MRP / Sell */}
                           <div>
                             <label className="block text-[9px] font-bold uppercase font-sans text-slate-400 mb-0.5">
                               MRP / Sell (₹)
@@ -1807,14 +1842,15 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
                             <input
                               type="number"
                               step="0.01"
-                              value={item.mrp ?? item.selling_price}
+                              value={item.mrp !== null && item.mrp !== undefined ? item.mrp : ''}
                               onChange={(e) =>
                                 updateItem(
                                   item.id || '',
                                   'mrp',
-                                  parseFloat(e.target.value) || 0
+                                  e.target.value === '' ? null : parseFloat(e.target.value) || 0
                                 )
                               }
+                              placeholder=""
                               className="w-full text-right bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs text-[#4338CA] font-bold focus:bg-white focus:outline-none"
                             />
                           </div>
@@ -2185,7 +2221,13 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
                             ₹{(Number(item.price_without_tax ?? item.purchase_price) || 0).toFixed(2)}
                           </td>
                           <td className="py-1.5 px-3 text-right font-mono text-[#4338CA] font-bold">
-                            ₹{(Number(item.mrp ?? item.selling_price) || 0).toFixed(2)}
+                            {item.mrp !== null && item.mrp !== undefined && Number(item.mrp) > 0
+                              ? `₹${Number(item.mrp).toFixed(2)}`
+                              : item.selling_price !== null &&
+                                item.selling_price !== undefined &&
+                                Number(item.selling_price) > 0
+                              ? `₹${Number(item.selling_price).toFixed(2)}`
+                              : '-'}
                           </td>
                           <td className="py-1.5 px-3 text-center font-mono">
                             {item.gst_rate}%
