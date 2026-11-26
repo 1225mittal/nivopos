@@ -30,16 +30,24 @@ export default async function handler(req: any, res: any) {
     });
   }
 
-  const r2AccountId = process.env.R2_ACCOUNT_ID;
-  const r2AccessKeyId = process.env.R2_ACCESS_KEY_ID;
-  const r2SecretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
-  const r2BucketName = process.env.R2_BUCKET_NAME;
+  const accountId = process.env.CLOUDFLARE_R2_ACCOUNT_ID || process.env.R2_ACCOUNT_ID;
+  const accessKeyId = process.env.CLOUDFLARE_R2_ACCESS_KEY_ID || process.env.R2_ACCESS_KEY_ID;
+  const secretAccessKey =
+    process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY || process.env.R2_SECRET_ACCESS_KEY;
+  const bucketName = process.env.CLOUDFLARE_R2_BUCKET_NAME || process.env.R2_BUCKET_NAME;
+  const endpoint =
+    process.env.CLOUDFLARE_R2_ENDPOINT || `https://${accountId}.r2.cloudflarestorage.com`;
+  const publicBaseUrl = (
+    process.env.CLOUDFLARE_R2_PUBLIC_URL ||
+    process.env.R2_PUBLIC_URL ||
+    ''
+  ).replace(/\/$/, '');
 
-  if (!r2AccountId || !r2AccessKeyId || !r2SecretAccessKey || !r2BucketName) {
+  if (!accountId || !accessKeyId || !secretAccessKey || !bucketName) {
     return res.status(500).json({
       success: false,
       error:
-        'Server R2 configuration missing. Ensure R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, and R2_BUCKET_NAME are configured in environment variables.',
+        'Server R2 configuration missing. Ensure CLOUDFLARE_R2_ACCOUNT_ID (or R2_ACCOUNT_ID), CLOUDFLARE_R2_ACCESS_KEY_ID (or R2_ACCESS_KEY_ID), CLOUDFLARE_R2_SECRET_ACCESS_KEY (or R2_SECRET_ACCESS_KEY), and CLOUDFLARE_R2_BUCKET_NAME (or R2_BUCKET_NAME) are configured in environment variables.',
     });
   }
 
@@ -78,22 +86,21 @@ export default async function handler(req: any, res: any) {
 
     const s3Client = new S3Client({
       region: 'auto',
-      endpoint: `https://${r2AccountId}.r2.cloudflarestorage.com`,
+      endpoint,
       credentials: {
-        accessKeyId: r2AccessKeyId,
-        secretAccessKey: r2SecretAccessKey,
+        accessKeyId,
+        secretAccessKey,
       },
     });
 
-    const r2PublicDomain = process.env.R2_PUBLIC_URL?.replace(/\/+$/, '');
-    const publicUrl = r2PublicDomain
-      ? `${r2PublicDomain}/${objectKey}`
-      : `https://${r2BucketName}.r2.cloudflarestorage.com/${objectKey}`;
+    const publicUrl = publicBaseUrl
+      ? `${publicBaseUrl}/${objectKey}`
+      : `https://${bucketName}.r2.cloudflarestorage.com/${objectKey}`;
 
     // 1. Action: View / Download presigned GET URL
     if (action === 'view' || action === 'download' || action === 'get') {
       const getCommand = new GetObjectCommand({
-        Bucket: r2BucketName,
+        Bucket: bucketName,
         Key: objectKey,
       });
 
@@ -108,14 +115,14 @@ export default async function handler(req: any, res: any) {
         key: objectKey,
         fileKey: objectKey,
         publicUrl,
-        bucket: r2BucketName,
+        bucket: bucketName,
         expiresIn,
       });
     }
 
     // 2. Action: Upload presigned PUT URL (Default)
     const putCommand = new PutObjectCommand({
-      Bucket: r2BucketName,
+      Bucket: bucketName,
       Key: objectKey,
       ContentType: contentType,
     });
@@ -131,7 +138,7 @@ export default async function handler(req: any, res: any) {
       key: objectKey,
       fileKey: objectKey,
       publicUrl,
-      bucket: r2BucketName,
+      bucket: bucketName,
       contentType,
       expiresIn,
     });
