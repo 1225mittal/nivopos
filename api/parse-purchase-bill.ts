@@ -2,7 +2,7 @@
  * Nivo POS - Purchase Bill OCR Parsing Handler
  * File: api/parse-purchase-bill.ts
  *
- * Serverless API using Groq AI OCR (llama-3.2-11b-vision-preview / llama-3.3-70b-versatile)
+ * Serverless API using Groq AI OCR (qwen/qwen3.8-27b / llama-3.3-70b-versatile)
  * Extracts structured inventory line items from wholesaler / distributor purchase bills.
  */
 
@@ -100,7 +100,7 @@ All prices and quantities must be numbers. If selling price is not printed, esti
     let groqPayload: any;
 
     if (imageList.length > 0) {
-      // Vision Model: llama-3.2-11b-vision-preview (supporting up to 4 pages/images)
+      // Vision Model: qwen/qwen3.8-27b (supporting up to 4 pages/images)
       const userContent: any[] = [
         {
           type: 'text',
@@ -117,7 +117,7 @@ All prices and quantities must be numbers. If selling price is not printed, esti
       }
 
       groqPayload = {
-        model: 'llama-3.2-11b-vision-preview',
+        model: 'qwen/qwen3.8-27b',
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userContent },
