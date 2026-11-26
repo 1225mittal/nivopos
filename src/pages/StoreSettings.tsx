@@ -12,9 +12,13 @@ import {
   AlertCircle,
   Loader2,
   Info,
+  Upload,
+  Image as ImageIcon,
+  X,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { StoreProfile } from '../types';
+import { uploadToR2 } from '../lib/r2Upload';
 
 interface StoreSettingsProps {
   currentUser: any;
@@ -39,8 +43,10 @@ export const StoreSettings: React.FC<StoreSettingsProps> = ({
   const [city, setCity] = useState(userProfile?.city || '');
   const [phone, setPhone] = useState(userProfile?.phone || '');
   const [email, setEmail] = useState(userProfile?.email || '');
+  const [logoUrl, setLogoUrl] = useState(userProfile?.logo_url || '');
 
   const [saving, setSaving] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -55,8 +61,34 @@ export const StoreSettings: React.FC<StoreSettingsProps> = ({
       setCity(userProfile.city || '');
       setPhone(userProfile.phone || '');
       setEmail(userProfile.email || '');
+      setLogoUrl(userProfile.logo_url || '');
     }
   }, [userProfile]);
+
+  // Handle store logo upload to Cloudflare R2
+  const handleLogoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadingLogo(true);
+    setErrorMessage(null);
+    try {
+      const { publicUrl, fileKey } = await uploadToR2({
+        file,
+        storeId: currentUser.id,
+        folder: 'branding',
+      });
+      const resolved = publicUrl || fileKey;
+      setLogoUrl(resolved);
+      setSuccessMessage('Store logo uploaded directly to Cloudflare R2!');
+      setTimeout(() => setSuccessMessage(null), 3000);
+    } catch (err: any) {
+      console.error('[StoreSettings] Logo upload error:', err);
+      setErrorMessage(err.message || 'Failed to upload logo to Cloudflare R2.');
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -71,7 +103,7 @@ export const StoreSettings: React.FC<StoreSettingsProps> = ({
     }
 
     try {
-      const updatePayload = {
+      const updatePayload: any = {
         business_name: businessName.trim(),
         full_name: fullName.trim(),
         upi_id: upiId.trim(),
@@ -80,6 +112,7 @@ export const StoreSettings: React.FC<StoreSettingsProps> = ({
         city: city.trim(),
         phone: phone.trim(),
         email: email.trim(),
+        logo_url: logoUrl.trim() || null,
       };
 
       const { data, error } = await supabase
@@ -90,7 +123,16 @@ export const StoreSettings: React.FC<StoreSettingsProps> = ({
         .maybeSingle();
 
       if (error) {
-        throw error;
+        // Fallback if logo_url column doesn't exist yet in store_profiles
+        if (error.message?.includes('logo_url')) {
+          delete updatePayload.logo_url;
+          await supabase
+            .from('store_profiles')
+            .update(updatePayload)
+            .eq('id', currentUser.id);
+        } else {
+          throw error;
+        }
       }
 
       const mergedProfile: StoreProfile = {
@@ -99,6 +141,7 @@ export const StoreSettings: React.FC<StoreSettingsProps> = ({
         ...(data || {}),
         store_name: businessName.trim(),
         owner_name: fullName.trim(),
+        logo_url: logoUrl.trim(),
       };
 
       onProfileUpdated(mergedProfile);
@@ -145,6 +188,63 @@ export const StoreSettings: React.FC<StoreSettingsProps> = ({
 
       {/* Main Settings Form */}
       <form onSubmit={handleSubmit} className="p-6 sm:p-8 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-6">
+        {/* Store Logo & Branding (Cloudflare R2) */}
+        <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5">
+            <div className="w-16 h-16 rounded-2xl border border-slate-200 bg-white overflow-hidden flex items-center justify-center shrink-0 shadow-xs">
+              {logoUrl ? (
+                <img src={logoUrl} alt="Store Logo" className="w-full h-full object-contain p-1" />
+              ) : (
+                <ImageIcon className="w-6 h-6 text-slate-300" />
+              )}
+            </div>
+            <div>
+              <p className="text-xs font-bold text-[#0F172A]">Store Logo & Receipt Header</p>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Saved securely on Cloudflare R2 and printed on digital WhatsApp invoices & receipts.
+              </p>
+              {logoUrl && (
+                <span className="inline-block mt-1 text-[10px] text-[#0D9488] font-semibold bg-teal-50 px-2 py-0.5 rounded border border-teal-200">
+                  ✓ Synced to Cloudflare R2
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <label className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white border border-slate-200 text-xs font-bold text-[#4338CA] hover:bg-slate-50 shadow-xs transition-colors">
+              {uploadingLogo ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>Uploading to R2...</span>
+                </>
+              ) : (
+                <>
+                  <Upload className="w-3.5 h-3.5" />
+                  <span>{logoUrl ? 'Change Logo' : 'Upload Logo'}</span>
+                </>
+              )}
+              <input
+                type="file"
+                accept="image/*"
+                onChange={handleLogoChange}
+                disabled={uploadingLogo}
+                className="hidden"
+              />
+            </label>
+            {logoUrl && (
+              <button
+                type="button"
+                onClick={() => setLogoUrl('')}
+                className="p-2 rounded-xl bg-white border border-slate-200 text-rose-600 hover:bg-rose-50 text-xs transition-colors"
+                title="Remove logo"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Business Name */}
           <div>

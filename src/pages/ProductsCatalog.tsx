@@ -12,9 +12,12 @@ import {
   Loader2,
   ArrowUpDown,
   Filter,
+  Upload,
+  Image as ImageIcon,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { Product } from '../types';
+import { uploadToR2 } from '../lib/r2Upload';
 
 interface ProductsCatalogProps {
   currentUser: any;
@@ -59,6 +62,8 @@ export const ProductsCatalog: React.FC<ProductsCatalogProps> = ({
   const [gstRate, setGstRate] = useState<number>(5);
   const [stockQty, setStockQty] = useState<number | ''>(0);
   const [lowStockAlert, setLowStockAlert] = useState<number | ''>(10);
+  const [imageUrl, setImageUrl] = useState('');
+  const [uploadingImage, setUploadingImage] = useState(false);
 
   const [saving, setSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -104,6 +109,7 @@ export const ProductsCatalog: React.FC<ProductsCatalogProps> = ({
     setGstRate(5);
     setStockQty(0);
     setLowStockAlert(10);
+    setImageUrl('');
     setModalOpen(true);
   };
 
@@ -118,7 +124,28 @@ export const ProductsCatalog: React.FC<ProductsCatalogProps> = ({
     setGstRate(p.gst_rate);
     setStockQty(p.stock_qty);
     setLowStockAlert(p.low_stock_alert);
+    setImageUrl(p.image_url || '');
     setModalOpen(true);
+  };
+
+  // Upload product photo directly to Cloudflare R2
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingImage(true);
+    try {
+      const { publicUrl, fileKey } = await uploadToR2({
+        file,
+        storeId: currentUser.id,
+        folder: 'products',
+      });
+      setImageUrl(publicUrl || fileKey);
+    } catch (err: any) {
+      console.error('[ProductsCatalog] Error uploading product image:', err);
+      setFeedback({ type: 'error', message: 'Failed to upload product image to Cloudflare R2.' });
+    } finally {
+      setUploadingImage(false);
+    }
   };
 
   const handleSaveProduct = async (e: React.FormEvent) => {
@@ -133,7 +160,7 @@ export const ProductsCatalog: React.FC<ProductsCatalogProps> = ({
     const stockVal = Number(stockQty) || 0;
     const lowAlertVal = Number(lowStockAlert) || 5;
 
-    const payload = {
+    const payload: any = {
       store_id: currentUser.id,
       name: name.trim(),
       barcode: barcode.trim() || null,
@@ -144,18 +171,32 @@ export const ProductsCatalog: React.FC<ProductsCatalogProps> = ({
       gst_rate: Number(gstRate) || 0,
       stock_qty: stockVal,
       low_stock_alert: lowAlertVal,
+      image_url: imageUrl.trim() || null,
     };
 
     try {
       if (editingProduct) {
         // Update
-        const { data, error } = await supabase
+        let { data, error } = await supabase
           .from('products')
           .update(payload)
           .eq('id', editingProduct.id)
           .eq('store_id', currentUser.id)
           .select('*')
           .single();
+
+        if (error && error.message?.includes('image_url')) {
+          delete payload.image_url;
+          const retryRes = await supabase
+            .from('products')
+            .update(payload)
+            .eq('id', editingProduct.id)
+            .eq('store_id', currentUser.id)
+            .select('*')
+            .single();
+          data = retryRes.data;
+          error = retryRes.error;
+        }
 
         if (error) throw error;
 
@@ -165,11 +206,22 @@ export const ProductsCatalog: React.FC<ProductsCatalogProps> = ({
         setFeedback({ type: 'success', message: `Product "${name}" updated successfully!` });
       } else {
         // Insert
-        const { data, error } = await supabase
+        let { data, error } = await supabase
           .from('products')
           .insert(payload)
           .select('*')
           .single();
+
+        if (error && error.message?.includes('image_url')) {
+          delete payload.image_url;
+          const retryRes = await supabase
+            .from('products')
+            .insert(payload)
+            .select('*')
+            .single();
+          data = retryRes.data;
+          error = retryRes.error;
+        }
 
         if (error) throw error;
 
@@ -364,11 +416,27 @@ export const ProductsCatalog: React.FC<ProductsCatalogProps> = ({
                   return (
                     <tr key={prod.id} className="hover:bg-slate-50/80 transition-colors">
                       <td className="px-4 py-3 font-bold text-[#0F172A]">
-                        <div className="flex items-center gap-1.5">
-                          <span>{prod.name}</span>
-                          {isLowStock && (
-                            <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping" title="Low Stock Alert" />
-                          )}
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-lg border border-slate-200 overflow-hidden bg-slate-50 flex items-center justify-center shrink-0">
+                            {prod.image_url ? (
+                              <img
+                                src={prod.image_url}
+                                alt=""
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              <Package className="w-4 h-4 text-slate-400" />
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <span className="truncate block">{prod.name}</span>
+                            {isLowStock && (
+                              <span
+                                className="inline-block w-2 h-2 rounded-full bg-amber-500 animate-ping"
+                                title="Low Stock Alert"
+                              />
+                            )}
+                          </div>
                         </div>
                       </td>
                       <td className="px-4 py-3 font-mono text-slate-500 text-[11px]">
@@ -462,6 +530,53 @@ export const ProductsCatalog: React.FC<ProductsCatalogProps> = ({
                   placeholder="e.g. Aashirvaad Shudh Chakki Atta 5kg"
                   className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#4338CA] focus:bg-white"
                 />
+              </div>
+
+              {/* Product Image (Cloudflare R2) */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+                  Product Image (Cloudflare R2)
+                </label>
+                <div className="flex items-center gap-3 p-2.5 rounded-xl border border-slate-200 bg-slate-50">
+                  <div className="w-12 h-12 rounded-lg border border-slate-200 bg-white overflow-hidden flex items-center justify-center shrink-0">
+                    {imageUrl ? (
+                      <img src={imageUrl} alt="" className="w-full h-full object-cover" />
+                    ) : (
+                      <ImageIcon className="w-5 h-5 text-slate-300" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <label className="cursor-pointer inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-semibold text-[#4338CA] hover:bg-slate-100 shadow-xs transition-colors">
+                      {uploadingImage ? (
+                        <>
+                          <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          <span>Uploading to R2...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Upload className="w-3.5 h-3.5" />
+                          <span>{imageUrl ? 'Change Photo' : 'Upload Photo'}</span>
+                        </>
+                      )}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleImageUpload}
+                        disabled={uploadingImage}
+                        className="hidden"
+                      />
+                    </label>
+                    {imageUrl && (
+                      <button
+                        type="button"
+                        onClick={() => setImageUrl('')}
+                        className="ml-2 text-[11px] text-rose-600 hover:underline font-medium"
+                      >
+                        Remove
+                      </button>
+                    )}
+                  </div>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">

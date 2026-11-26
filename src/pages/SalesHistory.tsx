@@ -17,9 +17,12 @@ import {
   Clock,
   ArrowUpDown,
   ExternalLink,
+  Upload,
+  Image as ImageIcon,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { Invoice, InvoiceItem, StoreProfile } from '../types';
+import { uploadToR2 } from '../lib/r2Upload';
 
 interface SalesHistoryProps {
   currentUser: any;
@@ -42,8 +45,37 @@ export const SalesHistory: React.FC<SalesHistoryProps> = ({
   const [invoiceItems, setInvoiceItems] = useState<InvoiceItem[]>([]);
   const [loadingItems, setLoadingItems] = useState(false);
   const [markingPaid, setMarkingPaid] = useState(false);
+  const [uploadingReceipt, setUploadingReceipt] = useState(false);
 
   const businessName = userProfile?.business_name || userProfile?.store_name || 'Nivo Store';
+
+  const handleAttachReceipt = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !selectedInvoice) return;
+    setUploadingReceipt(true);
+    try {
+      const { publicUrl, fileKey } = await uploadToR2({
+        file,
+        storeId: currentUser.id,
+        folder: 'sales',
+      });
+      const resolved = publicUrl || fileKey;
+      await supabase
+        .from('invoices')
+        .update({ receipt_url: resolved })
+        .eq('id', selectedInvoice.id)
+        .eq('store_id', currentUser.id);
+
+      setSelectedInvoice((prev) => (prev ? { ...prev, receipt_url: resolved } : prev));
+      setInvoices((prev) =>
+        prev.map((inv) => (inv.id === selectedInvoice.id ? { ...inv, receipt_url: resolved } : inv))
+      );
+    } catch (err: any) {
+      console.error('[SalesHistory] Error uploading receipt to R2:', err);
+    } finally {
+      setUploadingReceipt(false);
+    }
+  };
 
   // Fetch real invoices for this store
   const fetchInvoices = async () => {
@@ -526,6 +558,46 @@ export const SalesHistory: React.FC<SalesHistoryProps> = ({
 
             {/* Action Buttons (Hidden during print) */}
             <div className="no-print pt-2 space-y-2">
+              {/* R2 Receipt Slip Attachment */}
+              {selectedInvoice.receipt_url ? (
+                <div className="flex items-center justify-between p-2 rounded-xl bg-slate-50 border border-slate-200 text-xs">
+                  <div className="flex items-center gap-1.5 truncate">
+                    <ImageIcon className="w-4 h-4 text-indigo-600 shrink-0" />
+                    <span className="text-slate-700 font-medium truncate">Receipt Slip Stored on R2</span>
+                  </div>
+                  <a
+                    href={selectedInvoice.receipt_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-indigo-600 hover:text-indigo-800 font-bold flex items-center gap-1 text-[11px] shrink-0"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>View</span>
+                  </a>
+                </div>
+              ) : (
+                <label className="flex items-center justify-center gap-1.5 p-2 rounded-xl border border-dashed border-slate-300 hover:border-indigo-400 bg-slate-50 hover:bg-slate-100 cursor-pointer text-xs text-slate-600 transition-colors">
+                  {uploadingReceipt ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin text-indigo-600" />
+                      <span className="font-medium text-slate-700">Uploading receipt to Cloudflare R2...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-4 h-4 text-slate-500" />
+                      <span className="font-medium text-slate-700">Attach Receipt / Slip to R2</span>
+                      <input
+                        type="file"
+                        accept="image/*,application/pdf"
+                        className="hidden"
+                        disabled={uploadingReceipt}
+                        onChange={handleAttachReceipt}
+                      />
+                    </>
+                  )}
+                </label>
+              )}
+
               <div className="grid grid-cols-2 gap-2">
                 <button
                   onClick={() => window.print()}

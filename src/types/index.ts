@@ -39,6 +39,7 @@ export interface StoreProfile {
   upi_id?: string;
   gstin?: string;
   store_address?: string;
+  logo_url?: string;
   plan_name?: string;
   subscription_status?: string;
   billing_cycle?: string;
@@ -53,6 +54,7 @@ export interface Product {
   store_id: string;
   name: string;
   barcode?: string;
+  image_url?: string;
   category?: string;
   sub_category?: string;
   unit: 'pcs' | 'kg' | 'ltr' | 'pack' | 'box' | string;
@@ -90,6 +92,7 @@ export interface Invoice {
   discount_amount: number;
   grand_total: number;
   status: 'paid' | 'unpaid' | string;
+  receipt_url?: string;
   created_at: string;
   invoice_items?: InvoiceItem[];
 }
@@ -151,6 +154,7 @@ export interface PurchaseBillItem {
   quantity?: number;
   amount?: number;
   barcode?: string;
+  image_url?: string;
   category?: string;
   sub_category?: string;
 }

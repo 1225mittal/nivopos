@@ -4,16 +4,19 @@ import { StoreProfile, AuthMode } from './types';
 import { LandingPage } from './pages/LandingPage';
 import { DashboardShell } from './pages/DashboardShell';
 import { AdminUsersPanel } from './pages/AdminUsersPanel';
+import { MobileBillScan } from './pages/MobileBillScan';
 import { AuthModal } from './components/AuthModal';
 import { Store, ShieldAlert, ArrowLeft, Loader2, Lock } from 'lucide-react';
 
-export function App() {
+interface StoreOwnerAppProps {
+  currentPath: string;
+  setCurrentPath: (path: string) => void;
+}
+
+function StoreOwnerApp({ currentPath, setCurrentPath }: StoreOwnerAppProps) {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<StoreProfile | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
-
-  // Path routing state for /hq-admin
-  const [currentPath, setCurrentPath] = useState(window.location.pathname);
 
   // HQ Admin verification state
   const [isHQAdmin, setIsHQAdmin] = useState<boolean | null>(null);
@@ -26,15 +29,6 @@ export function App() {
 
   // HQ modal state (when accessing /hq-admin while logged out)
   const [hqAuthModalOpen, setHqAuthModalOpen] = useState(false);
-
-  // Listen to popstate (back/forward navigation)
-  useEffect(() => {
-    const handlePopState = () => {
-      setCurrentPath(window.location.pathname);
-    };
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
 
   // Fetch or refresh store profile from public.store_profiles and ensure active owner status
   const fetchAndSyncProfile = useCallback(async (user: any) => {
@@ -379,6 +373,28 @@ export function App() {
       />
     </>
   );
+}
+
+export function App() {
+  const [currentPath, setCurrentPath] = useState(window.location.pathname);
+
+  // Listen to popstate (back/forward navigation)
+  useEffect(() => {
+    const handlePopState = () => {
+      setCurrentPath(window.location.pathname);
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  // ================= PUBLIC ROUTE: MOBILE BILL SCANNER =================
+  // Renders directly before any session/profile/AuthModal checks so scanning
+  // the QR code on a mobile device immediately opens the camera uploader.
+  if (currentPath.startsWith('/mobile-scan')) {
+    return <MobileBillScan />;
+  }
+
+  return <StoreOwnerApp currentPath={currentPath} setCurrentPath={setCurrentPath} />;
 }
 
 export default App;
