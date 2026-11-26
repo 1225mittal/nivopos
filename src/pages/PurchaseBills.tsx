@@ -31,6 +31,8 @@ import {
   Smartphone,
   Copy,
   Check,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 import QRCode from 'react-qr-code';
@@ -253,7 +255,23 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
   const [phoneQrUrl, setPhoneQrUrl] = useState<string>('');
   const [isReceivingFromPhone, setIsReceivingFromPhone] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [receivedPhoneCount, setReceivedPhoneCount] = useState(0);
   const phoneQrChannelRef = useRef<any>(null);
+
+  // Multi-Page Bill Grouping State
+  const [clubAsSingleBill, setClubAsSingleBill] = useState(true);
+  const [activeSeparateFileIndex, setActiveSeparateFileIndex] = useState(0);
+
+  const moveSelectedFile = (index: number, direction: 'up' | 'down') => {
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= selectedFiles.length) return;
+    setSelectedFiles((prev) => {
+      const copy = [...prev];
+      const [moved] = copy.splice(index, 1);
+      copy.splice(targetIndex, 0, moved);
+      return copy;
+    });
+  };
 
   const cleanupPhoneQrChannel = useCallback(() => {
     if (phoneQrChannelRef.current) {
@@ -285,6 +303,7 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
     setPhoneQrModalOpen(true);
     setIsReceivingFromPhone(false);
     setCopiedLink(false);
+    setReceivedPhoneCount(0);
 
     cleanupPhoneQrChannel();
 
@@ -326,17 +345,31 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
         }
 
         if (incomingFiles.length > 0) {
-          setSelectedFiles((prev) => [...prev, ...incomingFiles]);
+          setSelectedFiles((prev) => {
+            const existingKeys = new Set(prev.map((f) => f.r2FileKey || `${f.name}-${f.size}`));
+            const deduplicated = incomingFiles.filter(
+              (f) => !existingKeys.has(f.r2FileKey || `${f.name}-${f.size}`)
+            );
+            if (deduplicated.length > 0) {
+              setReceivedPhoneCount((c) => c + deduplicated.length);
+            }
+            return [...prev, ...deduplicated];
+          });
+
           setInputMode('upload');
+          if (payload?.clubAsSingleBill || incomingFiles.length > 1) {
+            setClubAsSingleBill(true);
+          }
           setFeedback({
             type: 'success',
-            message: 'Received bill from phone! Ready to extract with Groq AI',
+            message: `Received ${incomingFiles.length} page${
+              incomingFiles.length > 1 ? 's' : ''
+            } from phone! Ready to extract with Groq AI`,
           });
         }
 
-        setPhoneQrModalOpen(false);
         setIsReceivingFromPhone(false);
-        cleanupPhoneQrChannel();
+        // Do not close the modal here: keep the Realtime channel active until the user clicks Done/Close!
       })
       .subscribe();
 
@@ -611,7 +644,12 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
       let pageDataUrls: string[] = [];
 
       if (inputMode === 'upload') {
-        for (const fileInfo of selectedFiles) {
+        const filesToProcess =
+          clubAsSingleBill || selectedFiles.length <= 1
+            ? selectedFiles
+            : [selectedFiles[Math.min(activeSeparateFileIndex, selectedFiles.length - 1)]];
+
+        for (const fileInfo of filesToProcess) {
           if (fileInfo.type === 'pdf') {
             setParsingStatusText(`Rendering PDF "${fileInfo.name}" to high-res images...`);
             try {
@@ -968,8 +1006,13 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
       }
 
       // 2. Upload original PDF and image files into Cloudflare R2 via uploadToR2
+      const filesToSave =
+        clubAsSingleBill || selectedFiles.length <= 1
+          ? selectedFiles
+          : [selectedFiles[Math.min(activeSeparateFileIndex, selectedFiles.length - 1)]];
+
       const uploadedFilePaths: string[] = [];
-      for (const fileInfo of selectedFiles) {
+      for (const fileInfo of filesToSave) {
         try {
           if (fileInfo.r2FileKey) {
             uploadedFilePaths.push(fileInfo.r2FileKey);
@@ -1180,7 +1223,14 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
 
       // Reset state for next bill
       setItems([]);
-      clearAllSelectedFiles();
+      if (clubAsSingleBill || selectedFiles.length <= 1) {
+        clearAllSelectedFiles();
+      } else {
+        const fileToRemove = filesToSave[0];
+        if (fileToRemove?.previewUrl) URL.revokeObjectURL(fileToRemove.previewUrl);
+        setSelectedFiles((prev) => prev.filter((f) => f.id !== fileToRemove?.id));
+        setActiveSeparateFileIndex(0);
+      }
       setRawText('');
       setSupplierName('');
       setSupplierGstin('');
@@ -1454,9 +1504,48 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
 
                   {/* Selected Files List with Badges & Thumbnails */}
                   {selectedFiles.length > 0 && (
-                    <div className="lg:col-span-6 space-y-2">
+                    <div className="lg:col-span-6 space-y-2.5">
+                      {/* Club pages as 1 bill vs Separate bills toggle */}
+                      {selectedFiles.length > 1 && (
+                        <div className="p-2.5 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-between gap-2 text-xs">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div
+                              className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
+                                clubAsSingleBill
+                                  ? 'bg-indigo-50 border border-indigo-200 text-[#4338CA]'
+                                  : 'bg-slate-200 text-slate-700'
+                              }`}
+                            >
+                              <Layers className="w-3.5 h-3.5" />
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-bold text-[#0F172A] text-xs leading-tight">
+                                {clubAsSingleBill ? 'Club pages as 1 bill' : 'Separate bills mode'}
+                              </p>
+                              <p className="text-[10px] text-slate-500 truncate">
+                                {clubAsSingleBill
+                                  ? `All ${selectedFiles.length} pages will be extracted in order as 1 bill`
+                                  : 'Each file is treated as a separate invoice'}
+                              </p>
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => setClubAsSingleBill((prev) => !prev)}
+                            className="px-2.5 py-1 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-[11px] font-bold text-slate-700 shadow-2xs transition-colors shrink-0"
+                          >
+                            {clubAsSingleBill ? 'Split into separate bills' : 'Club pages as 1 bill'}
+                          </button>
+                        </div>
+                      )}
+
                       <div className="flex items-center justify-between text-xs font-semibold text-slate-600 px-1">
-                        <span>Selected Files ({selectedFiles.length})</span>
+                        <span>
+                          {clubAsSingleBill && selectedFiles.length > 1
+                            ? `Queued Pages (${selectedFiles.length})`
+                            : `Selected Files (${selectedFiles.length})`}
+                        </span>
                         <button
                           type="button"
                           onClick={clearAllSelectedFiles}
@@ -1466,13 +1555,22 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
                         </button>
                       </div>
 
-                      <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
-                        {selectedFiles.map((fileInfo) => (
+                      <div className="space-y-1.5 max-h-52 overflow-y-auto pr-1">
+                        {selectedFiles.map((fileInfo, idx) => (
                           <div
                             key={fileInfo.id}
-                            className="flex items-center justify-between p-2.5 rounded-xl border border-slate-200 bg-white shadow-xs text-xs"
+                            className={`flex items-center justify-between p-2.5 rounded-xl border transition-all text-xs ${
+                              !clubAsSingleBill && activeSeparateFileIndex === idx
+                                ? 'border-[#4338CA] bg-indigo-50/40 shadow-xs'
+                                : 'border-slate-200 bg-white shadow-xs'
+                            }`}
                           >
-                            <div className="flex items-center gap-2.5 min-w-0">
+                            <div
+                              className="flex items-center gap-2.5 min-w-0 cursor-pointer"
+                              onClick={() => {
+                                if (!clubAsSingleBill) setActiveSeparateFileIndex(idx);
+                              }}
+                            >
                               {fileInfo.type === 'pdf' ? (
                                 <div className="w-8 h-8 rounded-lg bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-600 shrink-0">
                                   <FileText className="w-4 h-4" />
@@ -1492,10 +1590,17 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
                               )}
 
                               <div className="min-w-0">
-                                <p className="font-semibold text-[#0F172A] truncate max-w-[200px] sm:max-w-xs">
-                                  {fileInfo.name}
-                                </p>
-                                <div className="flex items-center gap-1.5 text-[10px] text-slate-500">
+                                <div className="flex items-center gap-1.5">
+                                  {clubAsSingleBill && selectedFiles.length > 1 && (
+                                    <span className="px-1.5 py-0.2 rounded font-mono font-bold text-[9px] bg-[#4338CA] text-white">
+                                      Page {idx + 1}
+                                    </span>
+                                  )}
+                                  <p className="font-semibold text-[#0F172A] truncate max-w-[170px] sm:max-w-xs">
+                                    {fileInfo.name}
+                                  </p>
+                                </div>
+                                <div className="flex items-center gap-1.5 text-[10px] text-slate-500 mt-0.5">
                                   <span
                                     className={`px-1.5 py-0.2 rounded font-mono font-bold ${
                                       fileInfo.type === 'pdf'
@@ -1506,18 +1611,53 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
                                     {fileInfo.type === 'pdf' ? 'PDF' : 'IMAGE'}
                                   </span>
                                   <span>{formatFileSize(fileInfo.size)}</span>
+                                  {!clubAsSingleBill && selectedFiles.length > 1 && (
+                                    <span
+                                      className={`text-[9px] font-bold px-1 rounded ${
+                                        activeSeparateFileIndex === idx
+                                          ? 'bg-indigo-100 text-[#4338CA]'
+                                          : 'text-slate-400 hover:text-slate-600'
+                                      }`}
+                                    >
+                                      {activeSeparateFileIndex === idx ? '● Active' : 'Click to select'}
+                                    </span>
+                                  )}
                                 </div>
                               </div>
                             </div>
 
-                            <button
-                              type="button"
-                              onClick={() => removeSelectedFile(fileInfo.id)}
-                              className="p-1 rounded-lg text-slate-400 hover:text-rose-600 transition-colors"
-                              title="Remove file"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+                            <div className="flex items-center gap-1 shrink-0 ml-1">
+                              {clubAsSingleBill && selectedFiles.length > 1 && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => moveSelectedFile(idx, 'up')}
+                                    disabled={idx === 0}
+                                    className="p-1 rounded text-slate-400 hover:text-slate-700 disabled:opacity-20 transition-colors"
+                                    title="Move page up"
+                                  >
+                                    <ArrowUp className="w-3.5 h-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => moveSelectedFile(idx, 'down')}
+                                    disabled={idx === selectedFiles.length - 1}
+                                    className="p-1 rounded text-slate-400 hover:text-slate-700 disabled:opacity-20 transition-colors"
+                                    title="Move page down"
+                                  >
+                                    <ArrowDown className="w-3.5 h-3.5" />
+                                  </button>
+                                </>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => removeSelectedFile(fileInfo.id)}
+                                className="p-1 rounded-lg text-slate-400 hover:text-rose-600 transition-colors"
+                                title="Remove file"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -1559,7 +1699,15 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
               ) : (
                 <>
                   <Sparkles className="w-4 h-4" />
-                  <span>Extract Bill Items with Groq AI</span>
+                  <span>
+                    {inputMode === 'text'
+                      ? 'Extract Products & Seller from Text (Groq AI)'
+                      : clubAsSingleBill && selectedFiles.length > 1
+                      ? `Extract ${selectedFiles.length}-Page Bill with Groq AI`
+                      : selectedFiles.length > 1
+                      ? `Extract Active Bill (${activeSeparateFileIndex + 1} of ${selectedFiles.length}) with Groq AI`
+                      : 'Extract Products & Seller Details (Groq AI)'}
+                  </span>
                 </>
               )}
             </button>
@@ -2523,11 +2671,24 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
               </div>
             </div>
 
-            {/* Status Indicator */}
+            {/* Status Indicator & Live Phone Counter */}
             {isReceivingFromPhone ? (
               <div className="flex items-center justify-center gap-2 text-xs font-bold text-[#4338CA] bg-indigo-50 py-2.5 px-3 rounded-xl border border-indigo-200">
                 <Loader2 className="w-4 h-4 animate-spin text-[#4338CA]" />
-                <span>Receiving bill from phone...</span>
+                <span>Receiving pages from phone...</span>
+              </div>
+            ) : receivedPhoneCount > 0 ? (
+              <div className="flex items-center justify-between text-xs font-bold text-[#0D9488] bg-teal-50 py-2 px-3 rounded-xl border border-teal-200">
+                <div className="flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-[#0D9488]" />
+                  <span>
+                    {receivedPhoneCount} {receivedPhoneCount === 1 ? 'page' : 'pages'} received from
+                    phone
+                  </span>
+                </div>
+                <span className="text-[10px] bg-teal-100 text-teal-800 px-2 py-0.5 rounded-full font-mono">
+                  Live
+                </span>
               </div>
             ) : (
               <div className="flex items-center justify-center gap-2 text-xs text-slate-600 bg-slate-50 py-2 px-3 rounded-xl border border-slate-200">
@@ -2546,8 +2707,9 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
               <p className="font-semibold text-slate-700 text-xs">How it works:</p>
               <ol className="list-decimal list-inside space-y-0.5 text-[11px]">
                 <li>Open your mobile camera and scan the QR code</li>
-                <li>Take photos of the bill or pick from gallery</li>
-                <li>Tap <strong>Upload & Send to Desktop</strong></li>
+                <li>Take photos of Page 1, Page 2, Page 3, etc.</li>
+                <li>Tap <strong>Upload All & Send to Desktop</strong> on your phone</li>
+                <li>Pages queue here in real-time. Click <strong>Done / Close</strong> when finished</li>
               </ol>
             </div>
 
@@ -2587,9 +2749,19 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
               <button
                 type="button"
                 onClick={handleClosePhoneQrModal}
-                className="w-full py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors"
+                className={`w-full py-2.5 rounded-xl font-bold text-xs transition-colors flex items-center justify-center gap-1.5 ${
+                  receivedPhoneCount > 0
+                    ? 'bg-[#4338CA] hover:bg-[#3730A3] text-white shadow-xs'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                }`}
               >
-                Cancel
+                <span>
+                  {receivedPhoneCount > 0
+                    ? `Done / Close (${receivedPhoneCount} ${
+                        receivedPhoneCount === 1 ? 'page' : 'pages'
+                      } received)`
+                    : 'Done / Close'}
+                </span>
               </button>
             </div>
           </div>

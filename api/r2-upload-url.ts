@@ -74,15 +74,16 @@ export default async function handler(req: any, res: any) {
       .replace(/[^a-zA-Z0-9._-]/g, '_')
       .replace(/_+/g, '_');
 
-    // Generate object key: ${storeId}/${folder}/${Date.now()}-${sanitizedFileName}
+    // Generate object key: ${storeId}/${folder}/${Date.now()}-${Math.random().toString(36).slice(2, 7)}-${sanitizedFileName}
     const cleanStoreId = String(storeId).trim().replace(/^\/+|\/+$/g, '');
     const cleanFolder = String(folder).trim().replace(/^\/+|\/+$/g, '');
+    const randomSuffix = Math.random().toString(36).slice(2, 7);
 
     const objectKey = customKey
       ? String(customKey).replace(/^\/+/, '')
       : cleanStoreId
-      ? `${cleanStoreId}/${cleanFolder}/${Date.now()}-${sanitizedFileName}`
-      : `${cleanFolder}/${Date.now()}-${sanitizedFileName}`;
+      ? `${cleanStoreId}/${cleanFolder}/${Date.now()}-${randomSuffix}-${sanitizedFileName}`
+      : `${cleanFolder}/${Date.now()}-${randomSuffix}-${sanitizedFileName}`;
 
     const s3Client = new S3Client({
       region: 'auto',
