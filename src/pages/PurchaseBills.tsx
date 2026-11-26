@@ -33,6 +33,11 @@ import {
   Check,
   ArrowUp,
   ArrowDown,
+  Search,
+  Users,
+  RotateCcw,
+  FileSpreadsheet,
+  ChevronRight,
 } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 import QRCode from 'react-qr-code';
@@ -44,6 +49,7 @@ import {
   PurchaseBillData,
   PurchaseBillRecord,
   Product,
+  Supplier,
 } from '../types';
 
 // Configure pdfjs-dist worker using Vite's new URL
@@ -262,6 +268,38 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
   const [clubAsSingleBill, setClubAsSingleBill] = useState(true);
   const [activeSeparateFileIndex, setActiveSeparateFileIndex] = useState(0);
 
+  // Purchase Hub Sub-tabs: 'new-purchase' | 'ledger' | 'vendors' | 'debit-note'
+  type PurchaseHubTab = 'new-purchase' | 'ledger' | 'vendors' | 'debit-note';
+  const [hubTab, setHubTab] = useState<PurchaseHubTab>('new-purchase');
+
+  // Suppliers Directory State
+  const [suppliersList, setSuppliersList] = useState<Supplier[]>([]);
+  const [loadingSuppliers, setLoadingSuppliers] = useState(false);
+  const [vendorSearchQuery, setVendorSearchQuery] = useState('');
+
+  // Invoices Ledger Search Filter
+  const [ledgerSearchQuery, setLedgerSearchQuery] = useState('');
+
+  // Sale Return / Debit Note State
+  const [debitNotes, setDebitNotes] = useState<
+    Array<{
+      id: string;
+      date: string;
+      supplierName: string;
+      invoiceNumber: string;
+      reason: string;
+      amount: number;
+      remarks: string;
+      status: string;
+    }>
+  >([]);
+  const [debitNoteModalOpen, setDebitNoteModalOpen] = useState(false);
+  const [debitNoteSupplier, setDebitNoteSupplier] = useState('');
+  const [debitNoteInvoiceNo, setDebitNoteInvoiceNo] = useState('');
+  const [debitNoteReason, setDebitNoteReason] = useState('Damaged Goods / Expiry');
+  const [debitNoteAmount, setDebitNoteAmount] = useState('');
+  const [debitNoteRemarks, setDebitNoteRemarks] = useState('');
+
   const moveSelectedFile = (index: number, direction: 'up' | 'down') => {
     const targetIndex = direction === 'up' ? index - 1 : index + 1;
     if (targetIndex < 0 || targetIndex >= selectedFiles.length) return;
@@ -439,10 +477,32 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
     }
   }, [currentUser?.id]);
 
+  // Fetch suppliers directory from Supabase
+  const fetchSuppliers = useCallback(async () => {
+    if (!currentUser?.id) return;
+    try {
+      setLoadingSuppliers(true);
+      const { data, error } = await supabase
+        .from('suppliers')
+        .select('*')
+        .eq('store_id', currentUser.id)
+        .order('name', { ascending: true });
+
+      if (!error && data) {
+        setSuppliersList(data);
+      }
+    } catch (err: any) {
+      console.warn('[PurchaseBills] fetchSuppliers note:', err.message);
+    } finally {
+      setLoadingSuppliers(false);
+    }
+  }, [currentUser?.id]);
+
   useEffect(() => {
     fetchSavedBills();
     loadExistingStoreCatalogCategories();
-  }, [fetchSavedBills, loadExistingStoreCatalogCategories]);
+    fetchSuppliers();
+  }, [fetchSavedBills, loadExistingStoreCatalogCategories, fetchSuppliers]);
 
   // Handle File Selection (multiple PDFs or images)
   const handleFiles = (filesList: FileList | null) => {
@@ -619,7 +679,7 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
   };
 
   // Perform AI OCR via Groq serverless handler (supports PDFs and images)
-  const handleParseBill = async () => {
+  const handleParseBill = async (overrideFileIndex?: number) => {
     if (inputMode === 'upload' && selectedFiles.length === 0) {
       setFeedback({
         type: 'error',
@@ -645,7 +705,9 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
 
       if (inputMode === 'upload') {
         const filesToProcess =
-          clubAsSingleBill || selectedFiles.length <= 1
+          overrideFileIndex !== undefined
+            ? [selectedFiles[overrideFileIndex]]
+            : clubAsSingleBill || selectedFiles.length <= 1
             ? selectedFiles
             : [selectedFiles[Math.min(activeSeparateFileIndex, selectedFiles.length - 1)]];
 
@@ -1291,6 +1353,7 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
       setBillNumber('');
       fetchSavedBills();
       loadExistingStoreCatalogCategories();
+      fetchSuppliers();
     } catch (err: any) {
       console.error('[PurchaseBills] Error updating stock:', err);
       setFeedback({
@@ -1427,115 +1490,256 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
         </div>
       )}
 
-      {/* STEP 1 & STEP 2 WORKSPACE (FULL-WIDTH VERTICAL STACK) */}
-      <div className="space-y-6 w-full">
-        {/* STEP 1: UPLOAD / SCAN / PASTE CARD (FULL WIDTH) */}
-        <div className="w-full space-y-4">
-          <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-4">
-            {/* Input Mode Selector */}
-            <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-slate-200">
-              <span className="text-xs font-bold text-[#0F172A] flex items-center gap-1.5">
-                <ScanLine className="w-4 h-4 text-[#4338CA]" />
-                <span>1. Scan / Import Bill</span>
-              </span>
-
+      {/* TWO-COLUMN WORKSPACE SPLIT (Jal Jeevan Purchase Hub layout) */}
+      <div className="flex flex-col md:flex-row items-start gap-6 w-full">
+        {/* Left Purchase Hub Sidebar (~240px) */}
+        <aside className="w-full md:w-60 lg:w-64 shrink-0 space-y-4">
+          <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-xs">
+            {/* Header Card */}
+            <div className="pb-3 border-b border-slate-100 mb-3">
               <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleOpenPhoneQrModal}
-                  className="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-[#4338CA] border border-indigo-200 font-bold text-xs flex items-center gap-1.5 transition-colors shadow-2xs active:scale-[0.99]"
-                >
-                  <QrCode className="w-4 h-4" />
-                  <span>Scan via Phone QR</span>
-                </button>
-
-                <div className="flex bg-slate-100 p-0.5 rounded-xl border border-slate-200 text-[11px]">
-                  <button
-                    type="button"
-                    onClick={() => setInputMode('upload')}
-                    className={`px-2.5 py-1 rounded-lg font-semibold transition-all ${
-                      inputMode === 'upload'
-                        ? 'bg-white text-[#4338CA] shadow-xs font-bold'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    PDF / Images
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setInputMode('text')}
-                    className={`px-2.5 py-1 rounded-lg font-semibold transition-all ${
-                      inputMode === 'text'
-                        ? 'bg-white text-[#4338CA] shadow-xs font-bold'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    Paste Text
-                  </button>
+                <div className="w-8 h-8 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-[#4338CA] shrink-0">
+                  <Receipt className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-xs font-bold text-[#0F172A] leading-tight">
+                    Purchase Hub
+                  </h3>
+                  <p className="text-[10px] text-slate-500 font-medium">
+                    Enterprise Inward & Sync
+                  </p>
                 </div>
               </div>
             </div>
 
-            {inputMode === 'upload' ? (
-              <div className="space-y-3">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*,application/pdf"
-                  multiple
-                  onChange={handleFileChange}
-                  className="hidden"
-                />
+            {/* Vertical Sub-Tabs */}
+            <nav className="space-y-1">
+              {/* 1. + Add New Purchase */}
+              <button
+                type="button"
+                onClick={() => setHubTab('new-purchase')}
+                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-left ${
+                  hubTab === 'new-purchase'
+                    ? 'bg-[#4338CA] text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Plus
+                    className={`w-3.5 h-3.5 ${
+                      hubTab === 'new-purchase' ? 'text-white' : 'text-[#4338CA]'
+                    }`}
+                  />
+                  <span>+ Add New Purchase</span>
+                </div>
+              </button>
 
-                {/* Dropzone & Selected Files in a wide responsive layout */}
-                <div
-                  className={`grid grid-cols-1 ${
-                    selectedFiles.length > 0 ? 'lg:grid-cols-12' : ''
-                  } gap-4 items-start`}
+              {/* 2. Invoices Ledger */}
+              <button
+                type="button"
+                onClick={() => setHubTab('ledger')}
+                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-left ${
+                  hubTab === 'ledger'
+                    ? 'bg-[#4338CA] text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <FileText
+                    className={`w-3.5 h-3.5 ${
+                      hubTab === 'ledger' ? 'text-white' : 'text-slate-500'
+                    }`}
+                  />
+                  <span>Invoices Ledger</span>
+                </div>
+                <span
+                  className={`text-[10px] font-mono px-2 py-0.5 rounded-full font-bold ${
+                    hubTab === 'ledger'
+                      ? 'bg-white/20 text-white'
+                      : 'bg-slate-100 text-slate-600 border border-slate-200'
+                  }`}
                 >
-                  <div className={selectedFiles.length > 0 ? 'lg:col-span-6' : 'w-full'}>
-                    {/* Dropzone Box */}
-                    <div
-                      onDragOver={(e) => {
-                        e.preventDefault();
-                        setIsDragOver(true);
-                      }}
-                      onDragLeave={() => setIsDragOver(false)}
-                      onDrop={(e) => {
-                        e.preventDefault();
-                        setIsDragOver(false);
-                        handleFiles(e.dataTransfer.files);
-                      }}
-                      onClick={() => fileInputRef.current?.click()}
-                      className={`p-6 rounded-2xl border-2 border-dashed cursor-pointer text-center space-y-2 transition-colors ${
-                        isDragOver
-                          ? 'border-[#4338CA] bg-indigo-50/50'
-                          : 'border-slate-300 hover:border-[#4338CA] bg-slate-50/60 hover:bg-slate-50'
-                      }`}
-                    >
-                      <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-[#4338CA] mx-auto shadow-xs">
-                        <Upload className="w-5 h-5" />
-                      </div>
-                      <div>
-                        <p className="text-xs font-bold text-[#0F172A]">
-                          Drop PDF Invoice or Bill Photos here
-                        </p>
-                        <p className="text-[11px] text-slate-500 mt-0.5">
-                          Supports PDF, JPEG, PNG, WebP (multiple files allowed)
-                        </p>
-                      </div>
-                      <div className="flex flex-wrap items-center justify-center gap-2 mt-1">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            fileInputRef.current?.click();
-                          }}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-slate-200 text-xs font-semibold text-[#4338CA] shadow-xs hover:bg-slate-50"
-                        >
-                          <Plus className="w-3.5 h-3.5" />
-                          <span>Browse Files</span>
-                        </button>
+                  {savedBills.length}
+                </span>
+              </button>
+
+              {/* 3. Item & Stock Master */}
+              <button
+                type="button"
+                onClick={onNavigateToProducts}
+                className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all text-left group"
+              >
+                <div className="flex items-center gap-2">
+                  <PackageCheck className="w-3.5 h-3.5 text-slate-500 group-hover:text-[#4338CA]" />
+                  <span>Item & Stock Master</span>
+                </div>
+                <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-teal-50 text-[#0D9488] border border-teal-200 font-mono">
+                  Live
+                </span>
+              </button>
+
+              {/* 4. Vendors Directory */}
+              <button
+                type="button"
+                onClick={() => setHubTab('vendors')}
+                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-left ${
+                  hubTab === 'vendors'
+                    ? 'bg-[#4338CA] text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Building2
+                    className={`w-3.5 h-3.5 ${
+                      hubTab === 'vendors' ? 'text-white' : 'text-slate-500'
+                    }`}
+                  />
+                  <span>Vendors Directory</span>
+                </div>
+                <span
+                  className={`text-[10px] font-mono px-2 py-0.5 rounded-full font-bold ${
+                    hubTab === 'vendors'
+                      ? 'bg-white/20 text-white'
+                      : 'bg-slate-100 text-slate-600 border border-slate-200'
+                  }`}
+                >
+                  {suppliersList.length}
+                </span>
+              </button>
+
+              {/* 5. Sale Return / Debit Note */}
+              <button
+                type="button"
+                onClick={() => setHubTab('debit-note')}
+                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-left ${
+                  hubTab === 'debit-note'
+                    ? 'bg-[#4338CA] text-white shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <RotateCcw
+                    className={`w-3.5 h-3.5 ${
+                      hubTab === 'debit-note' ? 'text-white' : 'text-slate-500'
+                    }`}
+                  />
+                  <span>Sale Return / Debit Note</span>
+                </div>
+                {debitNotes.length > 0 && (
+                  <span
+                    className={`text-[10px] font-mono px-2 py-0.5 rounded-full font-bold ${
+                      hubTab === 'debit-note'
+                        ? 'bg-white/20 text-white'
+                        : 'bg-slate-100 text-slate-600 border border-slate-200'
+                    }`}
+                  >
+                    {debitNotes.length}
+                  </span>
+                )}
+              </button>
+            </nav>
+
+            {/* Quick helper in sidebar */}
+            <div className="pt-3 mt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={handleLoadSampleBill}
+                className="w-full px-2.5 py-2 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200 text-[11px] font-semibold transition-colors flex items-center justify-center gap-1.5 shadow-2xs"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-[#4338CA]" />
+                <span>Load Sample Bill</span>
+              </button>
+            </div>
+          </div>
+        </aside>
+
+        {/* Right Main Content Area */}
+        <main className="flex-1 min-w-0 space-y-6">
+          {hubTab === 'new-purchase' && (
+            <div className="space-y-6">
+              {/* TOP UPLOAD CARD: "Invoice Upload Drop-Zone & Mobile Camera Sync" */}
+              <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-4">
+                {/* Header */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-[#4338CA] shrink-0">
+                      <ScanLine className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-[#0F172A]">
+                        Invoice Upload Drop-Zone & Mobile Camera Sync
+                      </h3>
+                      <p className="text-[11px] text-slate-500">
+                        Scan phone camera stream or drop multi-page wholesale PDF invoices into Cloudflare R2
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <div className="flex bg-slate-100 p-0.5 rounded-xl border border-slate-200 text-[11px]">
+                      <button
+                        type="button"
+                        onClick={() => setInputMode('upload')}
+                        className={`px-2.5 py-1 rounded-lg font-semibold transition-all ${
+                          inputMode === 'upload'
+                            ? 'bg-white text-[#4338CA] shadow-xs font-bold'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        Drop-Zone & QR
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setInputMode('text')}
+                        className={`px-2.5 py-1 rounded-lg font-semibold transition-all ${
+                          inputMode === 'text'
+                            ? 'bg-white text-[#4338CA] shadow-xs font-bold'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        Paste Text
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {inputMode === 'upload' ? (
+                  <div className="space-y-4">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*,application/pdf"
+                      multiple
+                      onChange={handleFileChange}
+                      className="hidden"
+                    />
+
+                    {/* Side-by-side 2-column action boxes */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Left Box: Scan via Phone QR Code */}
+                      <div
+                        onClick={handleOpenPhoneQrModal}
+                        className="p-5 rounded-2xl border-2 border-dashed border-teal-300 hover:border-[#0D9488] bg-teal-50/25 hover:bg-teal-50/50 cursor-pointer transition-all space-y-3 flex flex-col justify-between group shadow-2xs"
+                      >
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <div className="w-10 h-10 rounded-xl bg-teal-50 border border-teal-200 flex items-center justify-center text-[#0D9488] group-hover:scale-105 transition-transform shadow-2xs">
+                              <Smartphone className="w-5 h-5" />
+                            </div>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold font-mono bg-teal-50 text-[#0D9488] border border-teal-200 flex items-center gap-1 shadow-2xs">
+                              <span className="w-1.5 h-1.5 rounded-full bg-[#0D9488] animate-pulse" />
+                              Live Sync
+                            </span>
+                          </div>
+                          <div>
+                            <h4 className="text-xs font-bold text-[#0F172A] group-hover:text-[#0D9488] transition-colors">
+                              Scan via Phone QR Code
+                            </h4>
+                            <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                              Open your mobile camera to snap multi-page bills. Photos queue and stream straight to desktop in real time.
+                            </p>
+                          </div>
+                        </div>
 
                         <button
                           type="button"
@@ -1543,239 +1747,315 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
                             e.stopPropagation();
                             handleOpenPhoneQrModal();
                           }}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-50 border border-indigo-200 text-xs font-bold text-[#4338CA] shadow-xs hover:bg-indigo-100"
+                          className="w-full py-2 px-3 rounded-xl bg-white hover:bg-teal-50 text-[#0D9488] border border-teal-200 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors shadow-2xs"
                         >
                           <QrCode className="w-3.5 h-3.5" />
                           <span>Scan via Phone QR</span>
                         </button>
                       </div>
-                    </div>
-                  </div>
 
-                  {/* Selected Files List with Badges & Thumbnails */}
-                  {selectedFiles.length > 0 && (
-                    <div className="lg:col-span-6 space-y-2.5">
-                      {/* Club pages as 1 bill vs Separate bills toggle */}
-                      {selectedFiles.length > 1 && (
-                        <div className="p-2.5 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-between gap-2 text-xs">
-                          <div className="flex items-center gap-2 min-w-0">
+                      {/* Right Box: Upload Bill Photos / PDF (Multi-File) */}
+                      <div
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          setIsDragOver(true);
+                        }}
+                        onDragLeave={() => setIsDragOver(false)}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          setIsDragOver(false);
+                          handleFiles(e.dataTransfer.files);
+                        }}
+                        onClick={() => fileInputRef.current?.click()}
+                        className={`p-5 rounded-2xl border-2 border-dashed cursor-pointer transition-all space-y-3 flex flex-col justify-between group shadow-2xs ${
+                          isDragOver
+                            ? 'border-[#4338CA] bg-indigo-50/50'
+                            : 'border-slate-300 hover:border-[#4338CA] bg-slate-50/50 hover:bg-slate-50'
+                        }`}
+                      >
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between">
+                            <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-[#4338CA] group-hover:scale-105 transition-transform shadow-2xs">
+                              <Upload className="w-5 h-5" />
+                            </div>
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold font-mono bg-indigo-50 text-[#4338CA] border border-indigo-200 shadow-2xs">
+                              Multi-File R2
+                            </span>
+                          </div>
+                          <div>
+                            <h4 className="text-xs font-bold text-[#0F172A] group-hover:text-[#4338CA] transition-colors">
+                              Upload Bill Photos / PDF (Multi-File)
+                            </h4>
+                            <p className="text-[11px] text-slate-500 mt-1 leading-relaxed">
+                              Drag & drop wholesale invoice PDFs, bill captures, or receipts into Cloudflare R2 storage (nivopos-media).
+                            </p>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            fileInputRef.current?.click();
+                          }}
+                          className="w-full py-2 px-3 rounded-xl bg-white hover:bg-indigo-50 text-[#4338CA] border border-indigo-200 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors shadow-2xs"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          <span>Browse Files from PC</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Uploaded Bills Queue (X bills / X pages) bar */}
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50/70 p-4 space-y-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-200/80">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-[#0F172A]">
+                            Uploaded Bills Queue ({selectedFiles.length} {selectedFiles.length === 1 ? 'bill' : 'bills'})
+                          </span>
+                          {clubAsSingleBill && selectedFiles.length > 1 && (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-indigo-50 text-[#4338CA] border border-indigo-200">
+                              {selectedFiles.length} pages clubbed
+                            </span>
+                          )}
+                        </div>
+
+                        {selectedFiles.length > 0 && (
+                          <div className="flex items-center gap-2">
+                            {selectedFiles.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => setClubAsSingleBill((prev) => !prev)}
+                                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-colors flex items-center gap-1.5 shadow-2xs ${
+                                  clubAsSingleBill
+                                    ? 'bg-indigo-50 text-[#4338CA] border-indigo-200'
+                                    : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                                }`}
+                              >
+                                <Layers className="w-3.5 h-3.5" />
+                                <span>
+                                  {clubAsSingleBill ? 'Club pages as 1 bill' : 'Split into separate bills'}
+                                </span>
+                              </button>
+                            )}
+
+                            <button
+                              type="button"
+                              onClick={clearAllSelectedFiles}
+                              className="text-[11px] text-rose-600 hover:underline font-semibold"
+                            >
+                              Clear All
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Queue List */}
+                      {selectedFiles.length === 0 ? (
+                        <div className="py-4 text-center text-xs text-slate-500">
+                          Queue is empty. Drop wholesale invoices or scan via Phone QR above to queue bills.
+                        </div>
+                      ) : (
+                        <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+                          {selectedFiles.map((fileInfo, idx) => (
                             <div
-                              className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
-                                clubAsSingleBill
-                                  ? 'bg-indigo-50 border border-indigo-200 text-[#4338CA]'
-                                  : 'bg-slate-200 text-slate-700'
+                              key={fileInfo.id}
+                              className={`flex items-center justify-between p-2.5 rounded-xl border transition-all text-xs ${
+                                !clubAsSingleBill && activeSeparateFileIndex === idx
+                                  ? 'border-[#4338CA] bg-indigo-50/40 shadow-xs'
+                                  : 'border-slate-200 bg-white shadow-xs'
                               }`}
                             >
-                              <Layers className="w-3.5 h-3.5" />
-                            </div>
-                            <div className="min-w-0">
-                              <p className="font-bold text-[#0F172A] text-xs leading-tight">
-                                {clubAsSingleBill ? 'Club pages as 1 bill' : 'Separate bills mode'}
-                              </p>
-                              <p className="text-[10px] text-slate-500 truncate">
-                                {clubAsSingleBill
-                                  ? `All ${selectedFiles.length} pages will be extracted in order as 1 bill`
-                                  : 'Each file is treated as a separate invoice'}
-                              </p>
-                            </div>
-                          </div>
+                              <div
+                                className="flex items-center gap-2.5 min-w-0 cursor-pointer"
+                                onClick={() => {
+                                  if (!clubAsSingleBill) setActiveSeparateFileIndex(idx);
+                                }}
+                              >
+                                {fileInfo.type === 'pdf' ? (
+                                  <div className="w-8 h-8 rounded-lg bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-600 shrink-0">
+                                    <FileText className="w-4 h-4" />
+                                  </div>
+                                ) : (
+                                  <div className="w-8 h-8 rounded-lg border border-slate-200 overflow-hidden bg-slate-50 shrink-0 flex items-center justify-center">
+                                    {fileInfo.previewUrl ? (
+                                      <img
+                                        src={fileInfo.previewUrl}
+                                        alt="thumb"
+                                        className="w-full h-full object-cover"
+                                      />
+                                    ) : (
+                                      <ImageIcon className="w-4 h-4 text-slate-400" />
+                                    )}
+                                  </div>
+                                )}
 
-                          <button
-                            type="button"
-                            onClick={() => setClubAsSingleBill((prev) => !prev)}
-                            className="px-2.5 py-1 rounded-lg bg-white border border-slate-200 hover:bg-slate-100 text-[11px] font-bold text-slate-700 shadow-2xs transition-colors shrink-0"
-                          >
-                            {clubAsSingleBill ? 'Split into separate bills' : 'Club pages as 1 bill'}
-                          </button>
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-1.5">
+                                    {clubAsSingleBill && selectedFiles.length > 1 && (
+                                      <span className="px-1.5 py-0.2 rounded font-mono font-bold text-[9px] bg-[#4338CA] text-white">
+                                        Page {idx + 1}
+                                      </span>
+                                    )}
+                                    <p className="font-semibold text-[#0F172A] truncate max-w-[150px] sm:max-w-xs md:max-w-md">
+                                      {fileInfo.name}
+                                    </p>
+                                  </div>
+                                  <div className="flex items-center gap-1.5 text-[10px] text-slate-500 mt-0.5">
+                                    <span
+                                      className={`px-1.5 py-0.2 rounded font-mono font-bold ${
+                                        fileInfo.type === 'pdf'
+                                          ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                                          : 'bg-indigo-50 text-[#4338CA] border border-indigo-200'
+                                      }`}
+                                    >
+                                      {fileInfo.type === 'pdf' ? 'PDF' : 'IMAGE'}
+                                    </span>
+                                    <span>{formatFileSize(fileInfo.size)}</span>
+                                    {fileInfo.r2PublicUrl && (
+                                      <span className="text-[#0D9488] font-mono font-semibold">
+                                        Synced
+                                      </span>
+                                    )}
+                                    {!clubAsSingleBill && selectedFiles.length > 1 && (
+                                      <span
+                                        className={`text-[9px] font-bold px-1 rounded ${
+                                          activeSeparateFileIndex === idx
+                                            ? 'bg-indigo-100 text-[#4338CA]'
+                                            : 'text-slate-400 hover:text-slate-600'
+                                        }`}
+                                      >
+                                        {activeSeparateFileIndex === idx ? '● Active' : 'Click to select'}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                                {/* Per-card Extract with Groq AI action */}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setActiveSeparateFileIndex(idx);
+                                    handleParseBill(idx);
+                                  }}
+                                  disabled={isParsing}
+                                  className="px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-[#4338CA] border border-indigo-200 text-[11px] font-bold flex items-center gap-1 transition-colors shadow-2xs disabled:opacity-50"
+                                  title="Extract this bill with Groq AI"
+                                >
+                                  <Sparkles className="w-3.5 h-3.5" />
+                                  <span className="hidden sm:inline">Extract with Groq AI</span>
+                                </button>
+
+                                {clubAsSingleBill && selectedFiles.length > 1 && (
+                                  <>
+                                    <button
+                                      type="button"
+                                      onClick={() => moveSelectedFile(idx, 'up')}
+                                      disabled={idx === 0}
+                                      className="p-1 rounded text-slate-400 hover:text-slate-700 disabled:opacity-20 transition-colors"
+                                      title="Move up"
+                                    >
+                                      <ArrowUp className="w-3.5 h-3.5" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => moveSelectedFile(idx, 'down')}
+                                      disabled={idx === selectedFiles.length - 1}
+                                      className="p-1 rounded text-slate-400 hover:text-slate-700 disabled:opacity-20 transition-colors"
+                                      title="Move down"
+                                    >
+                                      <ArrowDown className="w-3.5 h-3.5" />
+                                    </button>
+                                  </>
+                                )}
+
+                                <button
+                                  type="button"
+                                  onClick={() => removeSelectedFile(fileInfo.id)}
+                                  className="p-1 rounded-lg text-slate-400 hover:text-rose-600 transition-colors"
+                                  title="Remove file"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       )}
 
-                      <div className="flex items-center justify-between text-xs font-semibold text-slate-600 px-1">
-                        <span>
-                          {clubAsSingleBill && selectedFiles.length > 1
-                            ? `Queued Pages (${selectedFiles.length})`
-                            : `Selected Files (${selectedFiles.length})`}
+                      {/* Primary Full Extract Button */}
+                      <button
+                        type="button"
+                        onClick={() => handleParseBill()}
+                        disabled={isParsing || selectedFiles.length === 0}
+                        className="w-full py-3 px-4 rounded-xl bg-[#4338CA] hover:bg-[#3730A3] text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-md hover:shadow-lg disabled:opacity-50"
+                      >
+                        {isParsing ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                            <span>{parsingStatusText || 'Extracting Bill Items (Groq AI)...'}</span>
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles className="w-4 h-4" />
+                            <span>
+                              {clubAsSingleBill && selectedFiles.length > 1
+                                ? `Extract ${selectedFiles.length}-Page Bill with Groq AI`
+                                : selectedFiles.length > 1
+                                ? `Extract Active Bill (${activeSeparateFileIndex + 1} of ${selectedFiles.length}) with Groq AI`
+                                : 'Extract Products & Seller Details (Groq AI)'}
+                            </span>
+                          </>
+                        )}
+                      </button>
+
+                      {/* Subtle Footer Bar */}
+                      <div className="flex items-center justify-between pt-2 border-t border-slate-200/60 text-[11px]">
+                        <span className="flex items-center gap-1.5 font-semibold text-slate-600">
+                          <Sparkles className="w-3.5 h-3.5 text-[#4338CA]" />
+                          <span>Powered by Groq Vision LPU OCR</span>
                         </span>
-                        <button
-                          type="button"
-                          onClick={clearAllSelectedFiles}
-                          className="text-rose-600 hover:underline text-[11px]"
-                        >
-                          Clear All
-                        </button>
-                      </div>
-
-                      <div className="space-y-1.5 max-h-52 overflow-y-auto pr-1">
-                        {selectedFiles.map((fileInfo, idx) => (
-                          <div
-                            key={fileInfo.id}
-                            className={`flex items-center justify-between p-2.5 rounded-xl border transition-all text-xs ${
-                              !clubAsSingleBill && activeSeparateFileIndex === idx
-                                ? 'border-[#4338CA] bg-indigo-50/40 shadow-xs'
-                                : 'border-slate-200 bg-white shadow-xs'
-                            }`}
-                          >
-                            <div
-                              className="flex items-center gap-2.5 min-w-0 cursor-pointer"
-                              onClick={() => {
-                                if (!clubAsSingleBill) setActiveSeparateFileIndex(idx);
-                              }}
-                            >
-                              {fileInfo.type === 'pdf' ? (
-                                <div className="w-8 h-8 rounded-lg bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-600 shrink-0">
-                                  <FileText className="w-4 h-4" />
-                                </div>
-                              ) : (
-                                <div className="w-8 h-8 rounded-lg border border-slate-200 overflow-hidden bg-slate-50 shrink-0 flex items-center justify-center">
-                                  {fileInfo.previewUrl ? (
-                                    <img
-                                      src={fileInfo.previewUrl}
-                                      alt="thumb"
-                                      className="w-full h-full object-cover"
-                                    />
-                                  ) : (
-                                    <ImageIcon className="w-4 h-4 text-slate-400" />
-                                  )}
-                                </div>
-                              )}
-
-                              <div className="min-w-0">
-                                <div className="flex items-center gap-1.5">
-                                  {clubAsSingleBill && selectedFiles.length > 1 && (
-                                    <span className="px-1.5 py-0.2 rounded font-mono font-bold text-[9px] bg-[#4338CA] text-white">
-                                      Page {idx + 1}
-                                    </span>
-                                  )}
-                                  <p className="font-semibold text-[#0F172A] truncate max-w-[170px] sm:max-w-xs">
-                                    {fileInfo.name}
-                                  </p>
-                                </div>
-                                <div className="flex items-center gap-1.5 text-[10px] text-slate-500 mt-0.5">
-                                  <span
-                                    className={`px-1.5 py-0.2 rounded font-mono font-bold ${
-                                      fileInfo.type === 'pdf'
-                                        ? 'bg-rose-50 text-rose-700 border border-rose-200'
-                                        : 'bg-indigo-50 text-[#4338CA] border border-indigo-200'
-                                    }`}
-                                  >
-                                    {fileInfo.type === 'pdf' ? 'PDF' : 'IMAGE'}
-                                  </span>
-                                  <span>{formatFileSize(fileInfo.size)}</span>
-                                  {!clubAsSingleBill && selectedFiles.length > 1 && (
-                                    <span
-                                      className={`text-[9px] font-bold px-1 rounded ${
-                                        activeSeparateFileIndex === idx
-                                          ? 'bg-indigo-100 text-[#4338CA]'
-                                          : 'text-slate-400 hover:text-slate-600'
-                                      }`}
-                                    >
-                                      {activeSeparateFileIndex === idx ? '● Active' : 'Click to select'}
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-
-                            <div className="flex items-center gap-1 shrink-0 ml-1">
-                              {clubAsSingleBill && selectedFiles.length > 1 && (
-                                <>
-                                  <button
-                                    type="button"
-                                    onClick={() => moveSelectedFile(idx, 'up')}
-                                    disabled={idx === 0}
-                                    className="p-1 rounded text-slate-400 hover:text-slate-700 disabled:opacity-20 transition-colors"
-                                    title="Move page up"
-                                  >
-                                    <ArrowUp className="w-3.5 h-3.5" />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => moveSelectedFile(idx, 'down')}
-                                    disabled={idx === selectedFiles.length - 1}
-                                    className="p-1 rounded text-slate-400 hover:text-slate-700 disabled:opacity-20 transition-colors"
-                                    title="Move page down"
-                                  >
-                                    <ArrowDown className="w-3.5 h-3.5" />
-                                  </button>
-                                </>
-                              )}
-                              <button
-                                type="button"
-                                onClick={() => removeSelectedFile(fileInfo.id)}
-                                className="p-1 rounded-lg text-slate-400 hover:text-rose-600 transition-colors"
-                                title="Remove file"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </div>
-                        ))}
+                        <span className="font-mono text-[10px] text-slate-400">
+                          Ultra-Fast LPU Vision • Pure Raw Extraction
+                        </span>
                       </div>
                     </div>
-                  )}
-                </div>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    <label className="block text-[11px] font-semibold text-slate-700 uppercase">
+                      Paste Wholesaler Bill / WhatsApp Order Text
+                    </label>
+                    <textarea
+                      rows={4}
+                      value={rawText}
+                      onChange={(e) => setRawText(e.target.value)}
+                      placeholder="Paste text like:&#10;Metro Cash & Carry - Inv #98421&#10;1. Fortune Sunlite Oil 1L x 24 packs @ 118&#10;2. Aashirvaad Atta 10kg x 15 @ 365..."
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#4338CA] focus:bg-white font-mono"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleParseBill()}
+                      disabled={isParsing || !rawText.trim()}
+                      className="w-full py-3 px-4 rounded-xl bg-[#4338CA] hover:bg-[#3730A3] text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-md hover:shadow-lg disabled:opacity-50"
+                    >
+                      {isParsing ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          <span>{parsingStatusText || 'Extracting Text (Groq AI)...'}</span>
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="w-4 h-4" />
+                          <span>Extract Products & Seller from Text (Groq AI)</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
               </div>
-            ) : (
-              <div className="space-y-2">
-                <label className="block text-[11px] font-semibold text-slate-700 uppercase">
-                  Paste Wholesaler Bill / WhatsApp Order Text
-                </label>
-                <textarea
-                  rows={4}
-                  value={rawText}
-                  onChange={(e) => setRawText(e.target.value)}
-                  placeholder="Paste text like:&#10;Metro Cash & Carry - Inv #98421&#10;1. Fortune Sunlite Oil 1L x 24 packs @ 118&#10;2. Aashirvaad Atta 10kg x 15 @ 365..."
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#4338CA] focus:bg-white font-mono"
-                />
-              </div>
-            )}
-
-            {/* Scan Action Button: Primary #4338CA */}
-            <button
-              type="button"
-              onClick={handleParseBill}
-              disabled={
-                isParsing ||
-                (inputMode === 'upload' && selectedFiles.length === 0) ||
-                (inputMode === 'text' && !rawText.trim())
-              }
-              className="w-full py-3 px-4 rounded-xl bg-[#4338CA] hover:bg-[#3730A3] text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-md hover:shadow-lg disabled:opacity-50"
-            >
-              {isParsing ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>{parsingStatusText || 'Extracting Bill Items (Groq AI)...'}</span>
-                </>
-              ) : (
-                <>
-                  <Sparkles className="w-4 h-4" />
-                  <span>
-                    {inputMode === 'text'
-                      ? 'Extract Products & Seller from Text (Groq AI)'
-                      : clubAsSingleBill && selectedFiles.length > 1
-                      ? `Extract ${selectedFiles.length}-Page Bill with Groq AI`
-                      : selectedFiles.length > 1
-                      ? `Extract Active Bill (${activeSeparateFileIndex + 1} of ${selectedFiles.length}) with Groq AI`
-                      : 'Extract Products & Seller Details (Groq AI)'}
-                  </span>
-                </>
-              )}
-            </button>
-
-            {/* Quick Tips Box (Tucked cleanly inside Section 1) */}
-            <div className="p-3.5 rounded-xl bg-teal-50/50 border border-teal-200 text-slate-700 text-xs flex flex-col md:flex-row md:items-center justify-between gap-2.5">
-              <div className="flex items-center gap-2 font-bold text-[#0D9488] shrink-0">
-                <PackageCheck className="w-4 h-4" />
-                <span>Automated Kirana Inward System:</span>
-              </div>
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-600">
-                <span>• <b>Suppliers Directory:</b> Verified in <code>public.suppliers</code> by GSTIN/Name</span>
-                <span>• <b>Product Master Sync:</b> Items, barcodes & categories auto-upserted to <code>public.products</code></span>
-                <span>• <b>Live Stock:</b> Existing catalog inventory incremented automatically</span>
-              </div>
-            </div>
-          </div>
-        </div>
 
         {/* STEP 2: REVIEW & EDIT EXTRACTED SELLER & ITEMS (FULL WIDTH) */}
         <div className="w-full space-y-4">
@@ -2317,118 +2597,656 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
           </div>
         </div>
       </div>
+    )}
 
-      {/* STEP 3: SAVED INWARD BILLS HISTORY */}
-      <div className="rounded-2xl bg-white border border-slate-200 shadow-xs p-5 space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200">
-          <div>
-            <h3 className="text-sm font-bold text-[#0F172A] flex items-center gap-1.5">
-              <FileCode className="w-4 h-4 text-[#4338CA]" />
-              <span>Saved Inward Bills History ({savedBills.length})</span>
-            </h3>
-            <p className="text-[11px] text-slate-500">
-              Audit trail of inward wholesale invoices and attached PDF/image documents.
-            </p>
+      {/* HUB TAB 2: INVOICES LEDGER */}
+      {hubTab === 'ledger' && (
+        <div className="rounded-2xl bg-white border border-slate-200 shadow-xs p-5 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-bold text-[#0F172A] flex items-center gap-1.5">
+                  <FileText className="w-4 h-4 text-[#4338CA]" />
+                  <span>Invoices Ledger</span>
+                </h3>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full font-bold bg-indigo-50 text-[#4338CA] border border-indigo-200">
+                  {savedBills.length} {savedBills.length === 1 ? 'invoice' : 'invoices'}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Audit trail of inward wholesale invoices, attached documents, and verified stock entries
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 self-start sm:self-auto">
+              <button
+                type="button"
+                onClick={() => setHubTab('new-purchase')}
+                className="px-3 py-1.5 rounded-xl bg-[#4338CA] hover:bg-[#3730A3] text-white text-xs font-bold flex items-center gap-1.5 shadow-2xs transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>+ Inward New Bill</span>
+              </button>
+              <button
+                type="button"
+                onClick={fetchSavedBills}
+                className="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition-colors"
+                title="Refresh invoices"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${loadingSavedBills ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
           </div>
 
+          {/* Search Filter Strip */}
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+              <input
+                type="text"
+                value={ledgerSearchQuery}
+                onChange={(e) => setLedgerSearchQuery(e.target.value)}
+                placeholder="Search ledger by supplier name, invoice #, or GSTIN..."
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-8 pr-3 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-[#4338CA] focus:bg-white"
+              />
+            </div>
+            {ledgerSearchQuery && (
+              <button
+                type="button"
+                onClick={() => setLedgerSearchQuery('')}
+                className="px-2 py-1 text-[11px] text-slate-500 hover:text-slate-900 font-semibold"
+              >
+                Clear filter
+              </button>
+            )}
+          </div>
+
+          {/* Table or Empty State */}
+          {savedBills.length === 0 ? (
+            <div className="py-12 text-center space-y-3">
+              <div className="w-12 h-12 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-[#4338CA] mx-auto">
+                <FileText className="w-6 h-6" />
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-[#0F172A]">No Inward Invoices Recorded Yet</h4>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Scan or upload your first distributor invoice to create an entry in the ledger.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setHubTab('new-purchase')}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#4338CA] text-white text-xs font-bold shadow-2xs hover:bg-[#3730A3]"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Inward First Bill</span>
+              </button>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left">
+                <thead className="bg-slate-50 text-[10px] uppercase font-semibold text-slate-600 border-b border-slate-200">
+                  <tr>
+                    <th className="py-2.5 px-3">Date</th>
+                    <th className="py-2.5 px-3">Supplier</th>
+                    <th className="py-2.5 px-3">Bill #</th>
+                    <th className="py-2.5 px-3 text-center">Items / Units</th>
+                    <th className="py-2.5 px-3 text-right">Grand Total</th>
+                    <th className="py-2.5 px-3 text-center">Attachments</th>
+                    <th className="py-2.5 px-3 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {savedBills
+                    .filter((bill) => {
+                      if (!ledgerSearchQuery.trim()) return true;
+                      const q = ledgerSearchQuery.toLowerCase();
+                      return (
+                        (bill.supplier_name || '').toLowerCase().includes(q) ||
+                        (bill.bill_number || '').toLowerCase().includes(q) ||
+                        (bill.supplier_gstin || '').toLowerCase().includes(q)
+                      );
+                    })
+                    .map((bill) => {
+                      const hasPdfs = (bill.bill_photo_urls || []).some((u) =>
+                        u.toLowerCase().endsWith('.pdf')
+                      );
+                      const filesCount = (bill.bill_photo_urls || []).length;
+
+                      return (
+                        <tr key={bill.id || bill.created_at} className="hover:bg-slate-50/60">
+                          <td className="py-2.5 px-3 font-mono text-slate-700">
+                            {bill.bill_date || bill.created_at?.slice(0, 10)}
+                          </td>
+                          <td className="py-2.5 px-3">
+                            <span className="font-semibold text-[#0F172A] block">
+                              {bill.supplier_name}
+                            </span>
+                            {bill.supplier_gstin && (
+                              <span className="text-[10px] font-mono text-[#0D9488]">
+                                GSTIN: {bill.supplier_gstin}
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-2.5 px-3 font-mono text-slate-600">
+                            {bill.bill_number}
+                          </td>
+                          <td className="py-2.5 px-3 text-center">
+                            <span className="font-semibold text-slate-800">
+                              {bill.total_items || (bill.items_json || []).length || 0}
+                            </span>{' '}
+                            items ({bill.total_units || 0} units)
+                          </td>
+                          <td className="py-2.5 px-3 text-right font-bold text-[#4338CA] font-mono">
+                            ₹{(Number(bill.grand_total) || 0).toLocaleString('en-IN')}
+                          </td>
+                          <td className="py-2.5 px-3 text-center">
+                            {filesCount > 0 ? (
+                              <span
+                                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                                  hasPdfs
+                                    ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                                    : 'bg-indigo-50 text-[#4338CA] border border-indigo-200'
+                                }`}
+                              >
+                                {hasPdfs ? <FileText className="w-3 h-3" /> : <ImageIcon className="w-3 h-3" />}
+                                <span>
+                                  {filesCount} {hasPdfs ? 'PDF/Img' : 'Img'}
+                                </span>
+                              </span>
+                            ) : (
+                              <span className="text-slate-400 text-[10px]">None</span>
+                            )}
+                          </td>
+                          <td className="py-2.5 px-3 text-right">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenBillDetails(bill)}
+                              className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-indigo-50 text-[#4338CA] border border-slate-200 hover:border-indigo-200 font-semibold text-xs inline-flex items-center gap-1 transition-colors"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                              <span>View Details</span>
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* HUB TAB 3: VENDORS DIRECTORY */}
+      {hubTab === 'vendors' && (
+        <div className="rounded-2xl bg-white border border-slate-200 shadow-xs p-5 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-bold text-[#0F172A] flex items-center gap-1.5">
+                  <Building2 className="w-4 h-4 text-[#4338CA]" />
+                  <span>Vendors Directory</span>
+                </h3>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full font-bold bg-teal-50 text-[#0D9488] border border-teal-200">
+                  {suppliersList.length} verified
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Distributors, FMCG companies, and local stockists synchronized from your inward bills
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 self-start sm:self-auto">
+              <button
+                type="button"
+                onClick={() => setHubTab('new-purchase')}
+                className="px-3 py-1.5 rounded-xl bg-[#4338CA] hover:bg-[#3730A3] text-white text-xs font-bold flex items-center gap-1.5 shadow-2xs transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>+ Inward Bill from Vendor</span>
+              </button>
+              <button
+                type="button"
+                onClick={fetchSuppliers}
+                className="p-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition-colors"
+                title="Refresh vendors"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${loadingSuppliers ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
+          </div>
+
+          {/* Search Filter Strip */}
+          <div className="flex items-center gap-2">
+            <div className="relative flex-1">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+              <input
+                type="text"
+                value={vendorSearchQuery}
+                onChange={(e) => setVendorSearchQuery(e.target.value)}
+                placeholder="Search vendors by name, GSTIN, phone, or address..."
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-8 pr-3 py-1.5 text-xs text-slate-900 focus:outline-none focus:border-[#4338CA] focus:bg-white"
+              />
+            </div>
+            {vendorSearchQuery && (
+              <button
+                type="button"
+                onClick={() => setVendorSearchQuery('')}
+                className="px-2 py-1 text-[11px] text-slate-500 hover:text-slate-900 font-semibold"
+              >
+                Clear filter
+              </button>
+            )}
+          </div>
+
+          {/* Vendors Table or Empty State */}
+          {suppliersList.length === 0 ? (
+            <div className="py-12 text-center space-y-3">
+              <div className="w-12 h-12 rounded-2xl bg-teal-50 border border-teal-200 flex items-center justify-center text-[#0D9488] mx-auto">
+                <Building2 className="w-6 h-6" />
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-[#0F172A]">No Vendors Registered Yet</h4>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Vendors are automatically created and updated whenever you scan or inward a wholesale bill.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setHubTab('new-purchase')}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#4338CA] text-white text-xs font-bold shadow-2xs hover:bg-[#3730A3]"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Inward First Bill</span>
+              </button>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left">
+                <thead className="bg-slate-50 text-[10px] uppercase font-semibold text-slate-600 border-b border-slate-200">
+                  <tr>
+                    <th className="py-2.5 px-3">Vendor / Wholesaler</th>
+                    <th className="py-2.5 px-3">GSTIN</th>
+                    <th className="py-2.5 px-3">Contact</th>
+                    <th className="py-2.5 px-3">Address</th>
+                    <th className="py-2.5 px-3 text-center">FSSAI License</th>
+                    <th className="py-2.5 px-3 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {suppliersList
+                    .filter((s) => {
+                      if (!vendorSearchQuery.trim()) return true;
+                      const q = vendorSearchQuery.toLowerCase();
+                      return (
+                        (s.name || '').toLowerCase().includes(q) ||
+                        (s.gstin || '').toLowerCase().includes(q) ||
+                        (s.phone || s.contact || '').toLowerCase().includes(q) ||
+                        (s.email || '').toLowerCase().includes(q) ||
+                        (s.address || '').toLowerCase().includes(q)
+                      );
+                    })
+                    .map((supplier) => (
+                      <tr key={supplier.id || supplier.name} className="hover:bg-slate-50/60">
+                        <td className="py-2.5 px-3">
+                          <span className="font-bold text-[#0F172A] block">
+                            {supplier.name}
+                          </span>
+                          {supplier.email && (
+                            <span className="text-[10px] text-slate-500 flex items-center gap-1 mt-0.5">
+                              <Mail className="w-2.5 h-2.5" />
+                              {supplier.email}
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3">
+                          {supplier.gstin ? (
+                            <span className="px-2 py-0.5 rounded-md bg-teal-50 border border-teal-200 text-[#0D9488] font-mono font-semibold text-[11px]">
+                              {supplier.gstin}
+                            </span>
+                          ) : (
+                            <span className="text-slate-400 text-[10px]">Unregistered</span>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3 font-mono text-slate-600">
+                          {supplier.phone || supplier.contact || '—'}
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-600 max-w-xs truncate">
+                          {supplier.address || '—'}
+                        </td>
+                        <td className="py-2.5 px-3 text-center font-mono text-[11px] text-slate-600">
+                          {supplier.fssai || '—'}
+                        </td>
+                        <td className="py-2.5 px-3 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setLedgerSearchQuery(supplier.name);
+                                setHubTab('ledger');
+                              }}
+                              className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-semibold transition-colors"
+                              title="View invoices from this supplier"
+                            >
+                              View Invoices
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSupplierName(supplier.name);
+                                if (supplier.gstin) setSupplierGstin(supplier.gstin);
+                                if (supplier.address) setSupplierAddress(supplier.address);
+                                if (supplier.phone || supplier.contact)
+                                  setSupplierContact(supplier.phone || supplier.contact || '');
+                                if (supplier.email) setSupplierEmail(supplier.email);
+                                if (supplier.fssai) setSupplierFssai(supplier.fssai);
+                                setHubTab('new-purchase');
+                              }}
+                              className="px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-[#4338CA] border border-indigo-200 text-[11px] font-bold transition-colors"
+                              title="Inward new bill from this supplier"
+                            >
+                              + Inward Bill
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* HUB TAB 4: SALE RETURN / DEBIT NOTE */}
+      {hubTab === 'debit-note' && (
+        <div className="rounded-2xl bg-white border border-slate-200 shadow-xs p-5 space-y-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-bold text-[#0F172A] flex items-center gap-1.5">
+                  <RotateCcw className="w-4 h-4 text-[#4338CA]" />
+                  <span>Sale Return / Debit Note (Purchase Return)</span>
+                </h3>
+                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-teal-50 text-[#0D9488] border border-teal-200 font-mono">
+                  Audit Tracked
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Issue debit notes to distributors for expired stock, damaged packages, or rate adjustments
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setDebitNoteSupplier(suppliersList[0]?.name || '');
+                setDebitNoteInvoiceNo('');
+                setDebitNoteReason('Damaged Goods / Expiry');
+                setDebitNoteAmount('');
+                setDebitNoteRemarks('');
+                setDebitNoteModalOpen(true);
+              }}
+              className="px-3 py-1.5 rounded-xl bg-[#4338CA] hover:bg-[#3730A3] text-white text-xs font-bold flex items-center gap-1.5 shadow-2xs transition-colors self-start sm:self-auto"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>+ Issue Debit Note</span>
+            </button>
+          </div>
+
+          {/* Quick Metrics Strip */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+              <span className="text-[10px] uppercase font-bold text-slate-500">
+                Total Debit Notes
+              </span>
+              <p className="text-base font-bold text-[#0F172A] font-mono">
+                {debitNotes.length}
+              </p>
+            </div>
+            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+              <span className="text-[10px] uppercase font-bold text-slate-500">
+                Total Claimed Value
+              </span>
+              <p className="text-base font-bold text-[#4338CA] font-mono">
+                ₹{debitNotes.reduce((sum, d) => sum + (d.amount || 0), 0).toLocaleString('en-IN')}
+              </p>
+            </div>
+            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+              <span className="text-[10px] uppercase font-bold text-slate-500">
+                Suppliers Impacted
+              </span>
+              <p className="text-base font-bold text-[#0D9488] font-mono">
+                {new Set(debitNotes.map((d) => d.supplierName)).size}
+              </p>
+            </div>
+          </div>
+
+          {/* Debit Notes Table or Empty State */}
+          {debitNotes.length === 0 ? (
+            <div className="py-12 text-center space-y-3">
+              <div className="w-12 h-12 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-[#4338CA] mx-auto">
+                <RotateCcw className="w-6 h-6" />
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-[#0F172A]">No Debit Notes Issued Yet</h4>
+                <p className="text-[11px] text-slate-500 mt-0.5">
+                  Issue debit notes against distributor invoices for damaged goods or price discrepancies.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setDebitNoteSupplier(suppliersList[0]?.name || '');
+                  setDebitNoteInvoiceNo('');
+                  setDebitNoteReason('Damaged Goods / Expiry');
+                  setDebitNoteAmount('');
+                  setDebitNoteRemarks('');
+                  setDebitNoteModalOpen(true);
+                }}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#4338CA] text-white text-xs font-bold shadow-2xs hover:bg-[#3730A3]"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Issue First Debit Note</span>
+              </button>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs text-left">
+                <thead className="bg-slate-50 text-[10px] uppercase font-semibold text-slate-600 border-b border-slate-200">
+                  <tr>
+                    <th className="py-2.5 px-3">Date</th>
+                    <th className="py-2.5 px-3">Supplier</th>
+                    <th className="py-2.5 px-3">Ref Invoice #</th>
+                    <th className="py-2.5 px-3">Reason</th>
+                    <th className="py-2.5 px-3 text-right">Debit Amount</th>
+                    <th className="py-2.5 px-3 text-center">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {debitNotes.map((dn) => (
+                    <tr key={dn.id} className="hover:bg-slate-50/60">
+                      <td className="py-2.5 px-3 font-mono text-slate-700">{dn.date}</td>
+                      <td className="py-2.5 px-3 font-semibold text-[#0F172A]">{dn.supplierName}</td>
+                      <td className="py-2.5 px-3 font-mono text-slate-600">
+                        {dn.invoiceNumber || '—'}
+                      </td>
+                      <td className="py-2.5 px-3 text-slate-700">{dn.reason}</td>
+                      <td className="py-2.5 px-3 text-right font-bold text-rose-600 font-mono">
+                        -₹{(dn.amount || 0).toLocaleString('en-IN')}
+                      </td>
+                      <td className="py-2.5 px-3 text-center">
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-teal-50 text-[#0D9488] border border-teal-200">
+                          {dn.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+    </main>
+  </div>
+
+  {/* ================= ISSUE DEBIT NOTE MODAL ================= */}
+  {debitNoteModalOpen && (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-800/40 backdrop-blur-sm overflow-y-auto">
+      <div className="relative w-full max-w-lg bg-white border border-slate-200 rounded-3xl p-6 shadow-2xl my-auto space-y-4 text-slate-900">
+        <div className="flex items-center justify-between pb-3 border-b border-slate-200">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-[#4338CA]">
+              <RotateCcw className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-[#0F172A]">Issue Purchase Debit Note</h3>
+              <p className="text-[11px] text-slate-500">Debit wholesaler for damaged items or price differences</p>
+            </div>
+          </div>
           <button
             type="button"
-            onClick={fetchSavedBills}
-            className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold flex items-center gap-1.5 self-start sm:self-auto"
+            onClick={() => setDebitNoteModalOpen(false)}
+            className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${loadingSavedBills ? 'animate-spin' : ''}`} />
-            <span>Refresh</span>
+            <X className="w-4 h-4" />
           </button>
         </div>
 
-        {savedBills.length === 0 ? (
-          <div className="p-8 text-center text-xs text-slate-500">
-            No purchase bills recorded yet. Extract and commit your first bill above.
+        <div className="space-y-3 text-xs">
+          <div>
+            <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">
+              Supplier / Wholesaler *
+            </label>
+            {suppliersList.length > 0 ? (
+              <select
+                value={debitNoteSupplier}
+                onChange={(e) => setDebitNoteSupplier(e.target.value)}
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-[#4338CA]"
+              >
+                {suppliersList.map((s) => (
+                  <option key={s.id || s.name} value={s.name}>
+                    {s.name} {s.gstin ? `(${s.gstin})` : ''}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                type="text"
+                value={debitNoteSupplier}
+                onChange={(e) => setDebitNoteSupplier(e.target.value)}
+                placeholder="Enter supplier name"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-[#4338CA]"
+              />
+            )}
           </div>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-xs text-left">
-              <thead className="bg-slate-50 text-[10px] uppercase font-semibold text-slate-600 border-b border-slate-200">
-                <tr>
-                  <th className="py-2.5 px-3">Date</th>
-                  <th className="py-2.5 px-3">Supplier</th>
-                  <th className="py-2.5 px-3">Bill #</th>
-                  <th className="py-2.5 px-3 text-center">Items / Units</th>
-                  <th className="py-2.5 px-3 text-right">Grand Total</th>
-                  <th className="py-2.5 px-3 text-center">Attachments</th>
-                  <th className="py-2.5 px-3 text-right">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {savedBills.map((bill) => {
-                  const hasPdfs = (bill.bill_photo_urls || []).some((u) =>
-                    u.toLowerCase().endsWith('.pdf')
-                  );
-                  const filesCount = (bill.bill_photo_urls || []).length;
 
-                  return (
-                    <tr key={bill.id || bill.created_at} className="hover:bg-slate-50/60">
-                      <td className="py-2.5 px-3 font-mono text-slate-700">
-                        {bill.bill_date || bill.created_at?.slice(0, 10)}
-                      </td>
-                      <td className="py-2.5 px-3">
-                        <span className="font-semibold text-[#0F172A] block">
-                          {bill.supplier_name}
-                        </span>
-                        {bill.supplier_gstin && (
-                          <span className="text-[10px] font-mono text-[#0D9488]">
-                            GSTIN: {bill.supplier_gstin}
-                          </span>
-                        )}
-                      </td>
-                      <td className="py-2.5 px-3 font-mono text-slate-600">
-                        {bill.bill_number}
-                      </td>
-                      <td className="py-2.5 px-3 text-center">
-                        <span className="font-semibold text-slate-800">
-                          {bill.total_items || (bill.items_json || []).length || 0}
-                        </span>{' '}
-                        items ({bill.total_units || 0} units)
-                      </td>
-                      <td className="py-2.5 px-3 text-right font-bold text-[#4338CA] font-mono">
-                        ₹{(Number(bill.grand_total) || 0).toLocaleString('en-IN')}
-                      </td>
-                      <td className="py-2.5 px-3 text-center">
-                        {filesCount > 0 ? (
-                          <span
-                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                              hasPdfs
-                                ? 'bg-rose-50 text-rose-700 border border-rose-200'
-                                : 'bg-indigo-50 text-[#4338CA] border border-indigo-200'
-                            }`}
-                          >
-                            {hasPdfs ? <FileText className="w-3 h-3" /> : <ImageIcon className="w-3 h-3" />}
-                            <span>
-                              {filesCount} {hasPdfs ? 'PDF/Img' : 'Img'}
-                            </span>
-                          </span>
-                        ) : (
-                          <span className="text-slate-400 text-[10px]">None</span>
-                        )}
-                      </td>
-                      <td className="py-2.5 px-3 text-right">
-                        <button
-                          type="button"
-                          onClick={() => handleOpenBillDetails(bill)}
-                          className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-indigo-50 text-[#4338CA] border border-slate-200 hover:border-indigo-200 font-semibold text-xs inline-flex items-center gap-1 transition-colors"
-                        >
-                          <Eye className="w-3.5 h-3.5" />
-                          <span>View Details</span>
-                        </button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">
+                Invoice # Ref (Optional)
+              </label>
+              <input
+                type="text"
+                value={debitNoteInvoiceNo}
+                onChange={(e) => setDebitNoteInvoiceNo(e.target.value)}
+                placeholder="e.g. INV-98421"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 font-mono focus:outline-none focus:border-[#4338CA]"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">
+                Debit Amount (₹) *
+              </label>
+              <input
+                type="number"
+                step="0.01"
+                value={debitNoteAmount}
+                onChange={(e) => setDebitNoteAmount(e.target.value)}
+                placeholder="0.00"
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 font-mono font-bold focus:outline-none focus:border-[#4338CA]"
+              />
+            </div>
           </div>
-        )}
+
+          <div>
+            <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">
+              Reason for Debit
+            </label>
+            <select
+              value={debitNoteReason}
+              onChange={(e) => setDebitNoteReason(e.target.value)}
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 focus:outline-none focus:border-[#4338CA]"
+            >
+              <option value="Damaged Goods / Expiry">Damaged Goods / Expiry</option>
+              <option value="Rate Difference / Overcharge">Rate Difference / Overcharge</option>
+              <option value="Short Quantity Delivery">Short Quantity Delivery</option>
+              <option value="Product Return to Stockist">Product Return to Stockist</option>
+              <option value="Other Commercial Adjustment">Other Commercial Adjustment</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-[10px] font-bold uppercase text-slate-600 mb-1">
+              Remarks / Description
+            </label>
+            <textarea
+              rows={2}
+              value={debitNoteRemarks}
+              onChange={(e) => setDebitNoteRemarks(e.target.value)}
+              placeholder="e.g. 5 packets leaked during transit, deducted from wholesaler payment"
+              className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-xs text-slate-900 focus:outline-none focus:border-[#4338CA]"
+            />
+          </div>
+        </div>
+
+        <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+          <button
+            type="button"
+            onClick={() => setDebitNoteModalOpen(false)}
+            className="px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              if (!debitNoteSupplier.trim()) {
+                setFeedback({ type: 'error', message: 'Please specify supplier name.' });
+                return;
+              }
+              const amt = parseFloat(debitNoteAmount);
+              if (isNaN(amt) || amt <= 0) {
+                setFeedback({ type: 'error', message: 'Please enter a valid debit amount.' });
+                return;
+              }
+              const newDebitNote = {
+                id: crypto.randomUUID(),
+                date: new Date().toISOString().slice(0, 10),
+                supplierName: debitNoteSupplier.trim(),
+                invoiceNumber: debitNoteInvoiceNo.trim(),
+                reason: debitNoteReason,
+                amount: amt,
+                remarks: debitNoteRemarks.trim(),
+                status: 'Issued',
+              };
+              setDebitNotes((prev) => [newDebitNote, ...prev]);
+              setDebitNoteModalOpen(false);
+              setFeedback({
+                type: 'success',
+                message: `Debit note of ₹${amt.toLocaleString('en-IN')} issued to ${debitNoteSupplier}!`,
+              });
+            }}
+            className="px-4 py-2 rounded-xl bg-[#4338CA] hover:bg-[#3730A3] text-white text-xs font-bold shadow-xs transition-colors"
+          >
+            Save & Record Debit Note
+          </button>
+        </div>
       </div>
+    </div>
+  )}
 
       {/* ================= PURCHASE BILL DETAILS MODAL ================= */}
       {detailsModalBill && (
