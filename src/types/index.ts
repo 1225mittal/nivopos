@@ -139,3 +139,19 @@ export interface PurchaseBillData {
   total_gst: number;
   grand_total: number;
 }
+
+export interface PurchaseBillRecord {
+  id?: string;
+  store_id: string;
+  supplier_name: string;
+  bill_number: string;
+  bill_date: string;
+  subtotal: number;
+  total_gst: number;
+  grand_total: number;
+  total_items?: number;
+  total_units?: number;
+  bill_photo_urls?: string[];
+  items_json?: PurchaseBillItem[];
+  created_at: string;
+}

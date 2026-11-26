@@ -57,12 +57,19 @@ export default async function handler(req: any, res: any) {
 
   try {
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body || {};
-    const { image, text } = body;
+    const { image, images, text } = body;
 
-    if (!image && !text) {
+    const imageList: string[] =
+      Array.isArray(images) && images.length > 0
+        ? images
+        : image
+        ? [image]
+        : [];
+
+    if (imageList.length === 0 && !text) {
       return res.status(400).json({
         success: false,
-        error: 'Either "image" (base64 data URL) or "text" (bill text) must be provided.',
+        error: 'Either "image"/"images" (base64 data URL) or "text" (bill text) must be provided.',
       });
     }
 
@@ -92,26 +99,28 @@ All prices and quantities must be numbers. If selling price is not printed, esti
 
     let groqPayload: any;
 
-    if (image) {
-      // Vision Model: llama-3.2-11b-vision-preview
-      const imageUrl = image.startsWith('data:') ? image : `data:image/jpeg;base64,${image}`;
+    if (imageList.length > 0) {
+      // Vision Model: llama-3.2-11b-vision-preview (supporting up to 4 pages/images)
+      const userContent: any[] = [
+        {
+          type: 'text',
+          text: 'Extract all line items, supplier name, invoice number, and totals across all pages of this Indian wholesale purchase bill / delivery challan into JSON.',
+        },
+      ];
+
+      for (const img of imageList.slice(0, 4)) {
+        const imageUrl = img.startsWith('data:') ? img : `data:image/jpeg;base64,${img}`;
+        userContent.push({
+          type: 'image_url',
+          image_url: { url: imageUrl },
+        });
+      }
+
       groqPayload = {
         model: 'llama-3.2-11b-vision-preview',
         messages: [
           { role: 'system', content: systemPrompt },
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'text',
-                text: 'Extract all line items, supplier name, invoice number, and totals from this Indian wholesale purchase bill / delivery challan into JSON.',
-              },
-              {
-                type: 'image_url',
-                image_url: { url: imageUrl },
-              },
-            ],
-          },
+          { role: 'user', content: userContent },
         ],
         temperature: 0.1,
         response_format: { type: 'json_object' },
