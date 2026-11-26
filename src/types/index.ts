@@ -54,12 +54,27 @@ export interface Product {
   name: string;
   barcode?: string;
   category?: string;
+  sub_category?: string;
   unit: 'pcs' | 'kg' | 'ltr' | 'pack' | 'box' | string;
   mrp: number;
   selling_price: number;
+  purchase_price?: number;
   gst_rate: number;
   stock_qty: number;
   low_stock_alert: number;
+  created_at?: string;
+}
+
+export interface Supplier {
+  id?: string;
+  store_id: string;
+  name: string;
+  gstin?: string | null;
+  address?: string | null;
+  contact?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  fssai?: string | null;
   created_at?: string;
 }
 
@@ -128,10 +143,25 @@ export interface PurchaseBillItem {
   selling_price?: number;
   gst_rate: number;
   total_amount: number;
+  // Groq OCR enriched fields
+  item_name?: string;
+  mrp?: number;
+  price_without_tax?: number;
+  price_after_tax?: number;
+  quantity?: number;
+  amount?: number;
+  barcode?: string;
+  category?: string;
+  sub_category?: string;
 }
 
 export interface PurchaseBillData {
   supplier_name: string;
+  supplier_gstin?: string;
+  supplier_address?: string;
+  supplier_contact?: string;
+  supplier_email?: string;
+  supplier_fssai?: string;
   bill_number: string;
   bill_date: string;
   items: PurchaseBillItem[];
@@ -144,6 +174,11 @@ export interface PurchaseBillRecord {
   id?: string;
   store_id: string;
   supplier_name: string;
+  supplier_gstin?: string;
+  supplier_address?: string;
+  supplier_contact?: string;
+  supplier_email?: string;
+  supplier_fssai?: string;
   bill_number: string;
   bill_date: string;
   subtotal: number;
