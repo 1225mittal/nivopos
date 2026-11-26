@@ -2,22 +2,18 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
   X,
-  Phone,
   Mail,
   Lock,
   Store,
   User,
-  MapPin,
-  Briefcase,
+  Phone,
   ArrowRight,
-  ShieldCheck,
   Loader2,
   AlertCircle,
   CheckCircle2,
-  RotateCcw,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
-import { BUSINESS_CATEGORIES, BusinessCategory, AuthMode, AuthMethod } from '../types';
+import { AuthMode } from '../types';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -33,21 +29,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   onAuthSuccess,
 }) => {
   const [authMode, setAuthMode] = useState<AuthMode>(initialMode);
-  const [method, setMethod] = useState<AuthMethod>('phone'); // Phone OTP is primary for India
 
   // Form Fields
   const [fullName, setFullName] = useState('');
   const [storeName, setStoreName] = useState('');
-  const [phone, setPhone] = useState('');
-  const [city, setCity] = useState('');
-  const [category, setCategory] = useState<BusinessCategory>('Kirana & Grocery');
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
-
-  // OTP flow state
-  const [otpSent, setOtpSent] = useState(false);
-  const [otpCode, setOtpCode] = useState('');
-  const [otpCountdown, setOtpCountdown] = useState(45);
 
   // Status states
   const [loading, setLoading] = useState(false);
@@ -59,28 +47,11 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setAuthMode(initialMode);
     setErrorMsg(null);
     setSuccessMsg(null);
-    setOtpSent(false);
   }, [initialMode, isOpen]);
-
-  // OTP countdown effect
-  useEffect(() => {
-    let timer: any;
-    if (otpSent && otpCountdown > 0) {
-      timer = setInterval(() => {
-        setOtpCountdown((prev) => {
-          if (prev <= 1) {
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    }
-    return () => clearInterval(timer);
-  }, [otpSent, otpCountdown]);
 
   if (!isOpen) return null;
 
-  // Clean phone input (ensure 10 digits without prefix for UI state)
+  // Clean phone input (ensure 10 digits for Indian numbers)
   const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const raw = e.target.value.replace(/\D/g, '');
     if (raw.length <= 10) {
@@ -88,50 +59,59 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     }
   };
 
-  // Helper to upsert into public.store_profiles with instant owner access & active launch beta plan
+  // Helper to upsert into public.store_profiles with admin access and verified approval
   const upsertStoreProfile = async (user: any) => {
     try {
-      const sanitizedPhone = phone
-        ? phone.startsWith('+91')
-          ? phone
-          : `+91${phone}`
-        : user.phone || '';
+      const cleanDigits = phone.replace(/\D/g, '');
+      const cleanPhone = cleanDigits
+        ? `+91${cleanDigits}`
+        : user.phone || user.user_metadata?.phone || '';
 
       const now = new Date().toISOString();
       const nextYear = new Date();
       nextYear.setFullYear(nextYear.getFullYear() + 1);
 
-      // Check if user already has an existing profile to preserve existing store names if not re-entered
+      // Check for existing profile to preserve any existing details
       const { data: existingProfile } = await supabase
         .from('store_profiles')
         .select('*')
         .eq('id', user.id)
         .maybeSingle();
 
-      const profileData = {
+      const profilePayload: any = {
         id: user.id,
-        owner_name:
+        full_name:
           fullName.trim() ||
+          existingProfile?.full_name ||
           existingProfile?.owner_name ||
           user.user_metadata?.full_name ||
           'Store Owner',
+        owner_name:
+          fullName.trim() ||
+          existingProfile?.owner_name ||
+          existingProfile?.full_name ||
+          user.user_metadata?.full_name ||
+          'Store Owner',
+        business_name:
+          storeName.trim() ||
+          existingProfile?.business_name ||
+          existingProfile?.store_name ||
+          user.user_metadata?.business_name ||
+          user.user_metadata?.store_name ||
+          'My Store',
         store_name:
           storeName.trim() ||
           existingProfile?.store_name ||
+          existingProfile?.business_name ||
           user.user_metadata?.store_name ||
+          user.user_metadata?.business_name ||
           'My Store',
-        phone: sanitizedPhone || existingProfile?.phone || '',
-        email: email.trim() || existingProfile?.email || user.email || '',
-        city: city.trim() || existingProfile?.city || user.user_metadata?.city || 'India',
-        business_category:
-          category ||
-          existingProfile?.business_category ||
-          user.user_metadata?.business_category ||
-          'Kirana & Grocery',
-        role: 'owner',
+        phone: cleanPhone || existingProfile?.phone || '',
+        email: email.trim().toLowerCase() || existingProfile?.email || user.email || '',
+        role: 'admin',
         is_approved: true,
-        plan_name: 'Launch Beta (All Modules)',
-        subscription_status: 'active',
+        plan_name: existingProfile?.plan_name || 'Launch Beta (All Modules)',
+        subscription_status: existingProfile?.subscription_status || 'active',
         billing_cycle: existingProfile?.billing_cycle || 'Free Beta',
         next_renewal_date: existingProfile?.next_renewal_date || nextYear.toISOString(),
         last_login_at: now,
@@ -140,118 +120,50 @@ export const AuthModal: React.FC<AuthModalProps> = ({
 
       const { error: upsertErr } = await supabase
         .from('store_profiles')
-        .upsert(profileData, { onConflict: 'id' });
+        .upsert(profilePayload, { onConflict: 'id' });
 
       if (upsertErr) {
         console.warn('[Nivo POS] store_profiles upsert note:', upsertErr.message);
+        // Resilient fallback for alternative column sets
+        const fallbackData: any = {
+          id: user.id,
+          owner_name: profilePayload.owner_name,
+          store_name: profilePayload.store_name,
+          phone: profilePayload.phone,
+          email: profilePayload.email,
+          role: 'admin',
+          is_approved: true,
+          last_login_at: now,
+          updated_at: now,
+        };
+        await supabase
+          .from('store_profiles')
+          .upsert(fallbackData, { onConflict: 'id' });
       }
     } catch (err) {
       console.error('[Nivo POS] Profile upsert error:', err);
     }
   };
 
-  // 1. Submit Phone OTP (Request OTP)
-  const handleSendOtp = async (e: React.FormEvent) => {
+  // Direct Email & Password Sign Up / Sign In Handler
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
     setSuccessMsg(null);
 
-    if (phone.length !== 10) {
-      setErrorMsg('Please enter a valid 10-digit Indian mobile number.');
-      return;
-    }
-
-    if (authMode === 'signup' && (!fullName.trim() || !storeName.trim())) {
-      setErrorMsg('Please enter your Full Name and Store Name.');
-      return;
-    }
-
-    setLoading(true);
-
-    try {
-      const formattedPhone = `+91${phone}`;
-
-      const { error } = await supabase.auth.signInWithOtp({
-        phone: formattedPhone,
-        options: {
-          data: {
-            full_name: fullName.trim(),
-            store_name: storeName.trim(),
-            city: city.trim(),
-            business_category: category,
-          },
-        },
-      });
-
-      if (error) {
-        throw error;
-      }
-
-      setOtpSent(true);
-      setOtpCountdown(45);
-      setSuccessMsg(`6-digit verification code sent to +91 ${phone}`);
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Unable to send SMS OTP. Please check your number.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // 2. Verify Phone OTP
-  const handleVerifyOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMsg(null);
-    setSuccessMsg(null);
-
-    if (otpCode.length !== 6) {
-      setErrorMsg('Please enter the complete 6-digit OTP code.');
-      return;
-    }
-
-    setLoading(true);
-
-    try {
-      const formattedPhone = `+91${phone}`;
-
-      const { data, error } = await supabase.auth.verifyOtp({
-        phone: formattedPhone,
-        token: otpCode.trim(),
-        type: 'sms',
-      });
-
-      if (error) {
-        throw error;
-      }
-
-      if (data?.user) {
-        await upsertStoreProfile(data.user);
-        setSuccessMsg('Phone verified! Launching your Nivo POS dashboard...');
-        setTimeout(() => {
-          onAuthSuccess(data.user);
-          onClose();
-        }, 600);
-      }
-    } catch (err: any) {
-      setErrorMsg(err.message || 'Invalid or expired OTP code. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // 3. Email & Password Authentication Flow
-  const handleEmailAuth = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErrorMsg(null);
-    setSuccessMsg(null);
-
-    if (!email || !password) {
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail || !password) {
       setErrorMsg('Please enter both email and password.');
       return;
     }
 
     if (authMode === 'signup') {
-      if (!fullName.trim() || !storeName.trim()) {
-        setErrorMsg('Please enter your Full Name and Store Name.');
+      if (!fullName.trim()) {
+        setErrorMsg('Please enter your full name.');
+        return;
+      }
+      if (!storeName.trim()) {
+        setErrorMsg('Please enter your store or business name.');
         return;
       }
       if (password.length < 6) {
@@ -263,51 +175,65 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setLoading(true);
 
     try {
+      const cleanDigits = phone.replace(/\D/g, '');
+      const cleanPhone = cleanDigits ? `+91${cleanDigits}` : '';
+
       if (authMode === 'signup') {
         const { data, error } = await supabase.auth.signUp({
-          email: email.trim(),
+          email: cleanEmail,
           password: password,
           options: {
             data: {
               full_name: fullName.trim(),
+              owner_name: fullName.trim(),
+              business_name: storeName.trim(),
               store_name: storeName.trim(),
-              phone: phone ? `+91${phone}` : '',
-              city: city.trim(),
-              business_category: category,
+              phone: cleanPhone,
             },
           },
         });
 
         if (error) throw error;
 
-        if (data?.user) {
-          await upsertStoreProfile(data.user);
-          setSuccessMsg('Account created! Activating all modules...');
-          setTimeout(() => {
-            onAuthSuccess(data.user);
-            onClose();
-          }, 700);
+        const authUser = data?.user;
+        if (!authUser) {
+          throw new Error('Sign up could not be completed. Please try again.');
         }
+
+        // Immediately upsert into public.store_profiles so they enter directly
+        await upsertStoreProfile(authUser);
+
+        setSuccessMsg('Store account created successfully! Launching terminal...');
+        setTimeout(() => {
+          onAuthSuccess(authUser);
+          onClose();
+        }, 500);
       } else {
-        // Sign In with email & password
+        // Direct Sign In with Email & Password
         const { data, error } = await supabase.auth.signInWithPassword({
-          email: email.trim(),
+          email: cleanEmail,
           password: password,
         });
 
         if (error) throw error;
 
-        if (data?.user) {
-          await upsertStoreProfile(data.user);
-          setSuccessMsg('Welcome back! Launching your terminal...');
-          setTimeout(() => {
-            onAuthSuccess(data.user);
-            onClose();
-          }, 600);
+        const authUser = data?.user;
+        if (!authUser) {
+          throw new Error('Sign in failed. Please verify credentials.');
         }
+
+        // Ensure store profile is updated / synced
+        await upsertStoreProfile(authUser);
+
+        setSuccessMsg('Welcome back! Launching your terminal...');
+        setTimeout(() => {
+          onAuthSuccess(authUser);
+          onClose();
+        }, 400);
       }
     } catch (err: any) {
-      setErrorMsg(err.message || 'Authentication failed. Please verify credentials.');
+      console.error('[AuthModal] Auth error:', err);
+      setErrorMsg(err.message || 'Authentication failed. Please verify your credentials.');
     } finally {
       setLoading(false);
     }
@@ -359,42 +285,42 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           </h3>
           <p className="text-xs text-slate-500 mt-1">
             {authMode === 'signup'
-              ? 'Instant Launch Beta access with all core modules unlocked for your store.'
-              : 'Sign in to access your counter terminal and store operating system.'}
+              ? 'Direct access to your counter terminal and store operating system.'
+              : 'Sign in with your email and password to access your counter terminal.'}
           </p>
         </div>
 
-        {/* Auth Method Toggle: Mobile OTP vs Email */}
+        {/* Auth Mode Toggle: Sign In vs Sign Up */}
         <div className="grid grid-cols-2 gap-1.5 p-1 bg-[#F4F6F9] rounded-xl border border-slate-200 mb-6">
           <button
             type="button"
             onClick={() => {
-              setMethod('phone');
+              setAuthMode('signin');
               setErrorMsg(null);
+              setSuccessMsg(null);
             }}
-            className={`flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-semibold transition-all ${
-              method === 'phone'
+            className={`py-2 rounded-lg text-xs font-semibold transition-all ${
+              authMode === 'signin'
                 ? 'bg-white text-[#4338CA] border border-indigo-200 shadow-sm'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <Phone className="w-3.5 h-3.5" />
-            <span>Mobile OTP (+91)</span>
+            Sign In
           </button>
           <button
             type="button"
             onClick={() => {
-              setMethod('email');
+              setAuthMode('signup');
               setErrorMsg(null);
+              setSuccessMsg(null);
             }}
-            className={`flex items-center justify-center gap-2 py-2 rounded-lg text-xs font-semibold transition-all ${
-              method === 'email'
+            className={`py-2 rounded-lg text-xs font-semibold transition-all ${
+              authMode === 'signup'
                 ? 'bg-white text-[#4338CA] border border-indigo-200 shadow-sm'
                 : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            <Mail className="w-3.5 h-3.5" />
-            <span>Email & Password</span>
+            Create Store Account
           </button>
         </div>
 
@@ -413,339 +339,130 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           </div>
         )}
 
-        {/* ================= METHOD 1: MOBILE OTP FLOW ================= */}
-        {method === 'phone' && (
-          <div>
-            {!otpSent ? (
-              // Step 1: Input Phone & (if signup) Store Info
-              <form onSubmit={handleSendOtp} className="space-y-3.5">
-                {authMode === 'signup' && (
-                  <>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                          Full Name *
-                        </label>
-                        <div className="relative">
-                          <User className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
-                          <input
-                            type="text"
-                            required
-                            placeholder="Rajesh Sharma"
-                            value={fullName}
-                            onChange={(e) => setFullName(e.target.value)}
-                            className="w-full bg-[#F4F6F9] border border-slate-300 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-[#4338CA] focus:bg-white"
-                          />
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                          Store / Business Name *
-                        </label>
-                        <div className="relative">
-                          <Store className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
-                          <input
-                            type="text"
-                            required
-                            placeholder="Sharma Super Mart"
-                            value={storeName}
-                            onChange={(e) => setStoreName(e.target.value)}
-                            className="w-full bg-[#F4F6F9] border border-slate-300 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-[#4338CA] focus:bg-white"
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                          City *
-                        </label>
-                        <div className="relative">
-                          <MapPin className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
-                          <input
-                            type="text"
-                            placeholder="Delhi NCR / Jaipur"
-                            value={city}
-                            onChange={(e) => setCity(e.target.value)}
-                            className="w-full bg-[#F4F6F9] border border-slate-300 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-[#4338CA] focus:bg-white"
-                          />
-                        </div>
-                      </div>
-
-                      <div>
-                        <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                          Business Category
-                        </label>
-                        <div className="relative">
-                          <Briefcase className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
-                          <select
-                            value={category}
-                            onChange={(e) => setCategory(e.target.value as BusinessCategory)}
-                            className="w-full bg-[#F4F6F9] border border-slate-300 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-[#4338CA] focus:bg-white appearance-none"
-                          >
-                            {BUSINESS_CATEGORIES.map((cat) => (
-                              <option key={cat} value={cat}>
-                                {cat}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      </div>
-                    </div>
-                  </>
-                )}
-
-                {/* 10-Digit Mobile Input */}
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                    10-Digit Indian Mobile Number *
-                  </label>
-                  <div className="flex items-center">
-                    <span className="inline-flex items-center px-3 py-2 rounded-l-xl border border-r-0 border-slate-300 bg-slate-100 text-xs font-bold text-slate-700 font-mono">
-                      🇮🇳 +91
-                    </span>
-                    <input
-                      type="tel"
-                      required
-                      placeholder="9876543210"
-                      value={phone}
-                      onChange={handlePhoneChange}
-                      className="w-full bg-[#F4F6F9] border border-slate-300 rounded-r-xl px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 font-mono tracking-wider focus:outline-none focus:border-[#4338CA] focus:bg-white"
-                    />
-                  </div>
-                  <span className="text-[10px] text-slate-500 mt-1 block">
-                    We will send a 6-digit one-time password via SMS.
-                  </span>
-                </div>
-
-                <button
-                  type="submit"
-                  disabled={loading || phone.length !== 10}
-                  className="w-full mt-2 py-3 rounded-xl bg-[#4338CA] hover:bg-[#3730A3] text-white font-semibold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-sm disabled:opacity-50"
-                >
-                  {loading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Sending OTP...</span>
-                    </>
-                  ) : (
-                    <>
-                      <span>Get 6-Digit OTP</span>
-                      <ArrowRight className="w-4 h-4" />
-                    </>
-                  )}
-                </button>
-              </form>
-            ) : (
-              // Step 2: 6-Digit OTP Verification Screen
-              <form onSubmit={handleVerifyOtp} className="space-y-4">
-                <div className="p-4 rounded-xl bg-[#F4F6F9] border border-slate-200 text-center">
-                  <p className="text-xs text-slate-700">
-                    Enter the 6-digit code sent to{' '}
-                    <strong className="text-[#4338CA] font-mono">+91 {phone}</strong>
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => setOtpSent(false)}
-                    className="text-[11px] text-[#0D9488] hover:underline font-semibold mt-1"
-                  >
-                    Change Number
-                  </button>
-                </div>
-
-                <div>
-                  <label className="block text-center text-xs font-semibold text-slate-700 mb-2">
-                    Verification Code (OTP)
-                  </label>
+        {/* Direct Email & Password Form */}
+        <form onSubmit={handleSubmit} className="space-y-3.5">
+          {authMode === 'signup' && (
+            <>
+              {/* Full Name */}
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                  Full Name *
+                </label>
+                <div className="relative">
+                  <User className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
                   <input
                     type="text"
-                    maxLength={6}
-                    autoFocus
                     required
-                    placeholder="••••••"
-                    value={otpCode}
-                    onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, ''))}
-                    className="w-full text-center tracking-[0.6em] font-mono font-bold text-xl bg-[#F4F6F9] border border-indigo-300 rounded-xl py-3 text-[#4338CA] focus:outline-none focus:bg-white focus:ring-2 focus:ring-indigo-200"
+                    placeholder="Rajesh Sharma"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                    className="w-full bg-[#F4F6F9] border border-slate-300 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-[#4338CA] focus:bg-white"
                   />
                 </div>
+              </div>
 
-                <div className="flex items-center justify-between text-xs text-slate-500 px-1">
-                  <span>
-                    {otpCountdown > 0 ? (
-                      `Resend code in ${otpCountdown}s`
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={handleSendOtp}
-                        className="text-[#0D9488] hover:underline font-semibold flex items-center gap-1"
-                      >
-                        <RotateCcw className="w-3 h-3" /> Resend OTP
-                      </button>
-                    )}
-                  </span>
-                  <span className="text-[11px] text-slate-400 font-mono">Secured by Nivo SMS</span>
+              {/* Store / Business Name */}
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                  Store / Business Name *
+                </label>
+                <div className="relative">
+                  <Store className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
+                  <input
+                    type="text"
+                    required
+                    placeholder="Sharma Super Mart"
+                    value={storeName}
+                    onChange={(e) => setStoreName(e.target.value)}
+                    className="w-full bg-[#F4F6F9] border border-slate-300 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-[#4338CA] focus:bg-white"
+                  />
                 </div>
+              </div>
 
-                <button
-                  type="submit"
-                  disabled={loading || otpCode.length !== 6}
-                  className="w-full py-3 rounded-xl bg-[#4338CA] hover:bg-[#3730A3] text-white font-semibold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-sm disabled:opacity-50"
-                >
-                  {loading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Verifying...</span>
-                    </>
-                  ) : (
-                    <>
-                      <ShieldCheck className="w-4 h-4 text-white" />
-                      <span>Verify & Launch Terminal</span>
-                    </>
-                  )}
-                </button>
-              </form>
+              {/* Phone Number */}
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                  Phone Number *
+                </label>
+                <div className="flex items-center">
+                  <span className="inline-flex items-center px-3 py-2 rounded-l-xl border border-r-0 border-slate-300 bg-slate-100 text-xs font-bold text-slate-700 font-mono">
+                    🇮🇳 +91
+                  </span>
+                  <input
+                    type="tel"
+                    required
+                    placeholder="9876543210"
+                    value={phone}
+                    onChange={handlePhoneChange}
+                    className="w-full bg-[#F4F6F9] border border-slate-300 rounded-r-xl px-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 font-mono tracking-wider focus:outline-none focus:border-[#4338CA] focus:bg-white"
+                  />
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* Email Address */}
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+              Store Email Address *
+            </label>
+            <div className="relative">
+              <Mail className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
+              <input
+                type="email"
+                required
+                placeholder="owner@store.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="w-full bg-[#F4F6F9] border border-slate-300 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-[#4338CA] focus:bg-white"
+              />
+            </div>
+          </div>
+
+          {/* Password */}
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+              Password *
+            </label>
+            <div className="relative">
+              <Lock className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
+              <input
+                type="password"
+                required
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full bg-[#F4F6F9] border border-slate-300 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-[#4338CA] focus:bg-white"
+              />
+            </div>
+            {authMode === 'signup' && (
+              <span className="text-[10px] text-slate-500 mt-0.5 block">
+                Minimum 6 characters
+              </span>
             )}
           </div>
-        )}
 
-        {/* ================= METHOD 2: EMAIL & PASSWORD FLOW ================= */}
-        {method === 'email' && (
-          <form onSubmit={handleEmailAuth} className="space-y-3.5">
-            {authMode === 'signup' && (
+          {/* Submit Button */}
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full mt-2 py-3 rounded-xl bg-[#4338CA] hover:bg-[#3730A3] text-white font-semibold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-sm disabled:opacity-50"
+          >
+            {loading ? (
               <>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                      Full Name *
-                    </label>
-                    <div className="relative">
-                      <User className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
-                      <input
-                        type="text"
-                        required
-                        placeholder="Rajesh Sharma"
-                        value={fullName}
-                        onChange={(e) => setFullName(e.target.value)}
-                        className="w-full bg-[#F4F6F9] border border-slate-300 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-[#4338CA] focus:bg-white"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                      Store / Business Name *
-                    </label>
-                    <div className="relative">
-                      <Store className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
-                      <input
-                        type="text"
-                        required
-                        placeholder="Sharma Super Mart"
-                        value={storeName}
-                        onChange={(e) => setStoreName(e.target.value)}
-                        className="w-full bg-[#F4F6F9] border border-slate-300 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-[#4338CA] focus:bg-white"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                      City
-                    </label>
-                    <div className="relative">
-                      <MapPin className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
-                      <input
-                        type="text"
-                        placeholder="Mumbai / Bengaluru"
-                        value={city}
-                        onChange={(e) => setCity(e.target.value)}
-                        className="w-full bg-[#F4F6F9] border border-slate-300 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-[#4338CA] focus:bg-white"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                      Business Category
-                    </label>
-                    <div className="relative">
-                      <Briefcase className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
-                      <select
-                        value={category}
-                        onChange={(e) => setCategory(e.target.value as BusinessCategory)}
-                        className="w-full bg-[#F4F6F9] border border-slate-300 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-[#4338CA] focus:bg-white appearance-none"
-                      >
-                        {BUSINESS_CATEGORIES.map((cat) => (
-                          <option key={cat} value={cat}>
-                            {cat}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                  </div>
-                </div>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Processing...</span>
+              </>
+            ) : (
+              <>
+                <span>
+                  {authMode === 'signup' ? 'Create Store Account' : 'Sign In to Store'}
+                </span>
+                <ArrowRight className="w-4 h-4" />
               </>
             )}
-
-            <div>
-              <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                Store Email Address *
-              </label>
-              <div className="relative">
-                <Mail className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
-                <input
-                  type="email"
-                  required
-                  placeholder="owner@store.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="w-full bg-[#F4F6F9] border border-slate-300 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-[#4338CA] focus:bg-white"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                Password *
-              </label>
-              <div className="relative">
-                <Lock className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-3" />
-                <input
-                  type="password"
-                  required
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-[#F4F6F9] border border-slate-300 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-[#4338CA] focus:bg-white"
-                />
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full mt-2 py-3 rounded-xl bg-[#4338CA] hover:bg-[#3730A3] text-white font-semibold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-sm disabled:opacity-50"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Processing...</span>
-                </>
-              ) : (
-                <>
-                  <span>
-                    {authMode === 'signup' ? 'Create Store Profile' : 'Sign In to Store'}
-                  </span>
-                  <ArrowRight className="w-4 h-4" />
-                </>
-              )}
-            </button>
-          </form>
-        )}
+          </button>
+        </form>
 
         {/* Footer Toggle between Sign In / Sign Up */}
         <div className="mt-6 pt-4 border-t border-slate-200 text-center text-xs text-slate-500">
@@ -756,8 +473,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 type="button"
                 onClick={() => {
                   setAuthMode('signin');
-                  setOtpSent(false);
                   setErrorMsg(null);
+                  setSuccessMsg(null);
                 }}
                 className="text-[#4338CA] font-bold hover:underline"
               >
@@ -771,12 +488,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 type="button"
                 onClick={() => {
                   setAuthMode('signup');
-                  setOtpSent(false);
                   setErrorMsg(null);
+                  setSuccessMsg(null);
                 }}
                 className="text-[#4338CA] font-bold hover:underline"
               >
-                Sign Up Free
+                Create Free Account
               </button>
             </p>
           )}

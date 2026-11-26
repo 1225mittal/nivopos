@@ -60,7 +60,7 @@ export function App() {
         supabase
           .from('store_profiles')
           .update({
-            role: 'owner',
+            role: data.role || 'admin',
             is_approved: true,
             plan_name: 'Launch Beta (All Modules)',
             subscription_status: 'active',
@@ -70,17 +70,25 @@ export function App() {
           .eq('id', user.id)
           .then(() => {});
       } else {
-        // If no row exists yet, create one with instant owner access
+        // If no row exists yet, create one with instant admin access
         const defaultProfile: StoreProfile = {
           id: user.id,
+          full_name: user?.user_metadata?.full_name || 'Store Owner',
           owner_name: user?.user_metadata?.full_name || 'Store Owner',
-          store_name: user?.user_metadata?.store_name || 'My Store',
+          business_name:
+            user?.user_metadata?.business_name ||
+            user?.user_metadata?.store_name ||
+            'My Store',
+          store_name:
+            user?.user_metadata?.store_name ||
+            user?.user_metadata?.business_name ||
+            'My Store',
           phone: user?.phone || user?.user_metadata?.phone || '',
           email: user?.email || '',
           city: user?.user_metadata?.city || 'India',
           business_category:
             user?.user_metadata?.business_category || 'Kirana & Grocery',
-          role: 'owner',
+          role: 'admin',
           is_approved: true,
           plan_name: 'Launch Beta (All Modules)',
           subscription_status: 'active',
