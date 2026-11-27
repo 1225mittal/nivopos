@@ -153,6 +153,7 @@ export interface PurchaseBillItem {
   mrp?: number | string | null;
   purchase_rate?: number | string;
   discount?: number | string;
+  discount_percent?: number | string;
   price_without_tax?: number | string;
   price_after_tax?: number | string;
   quantity?: number | string;

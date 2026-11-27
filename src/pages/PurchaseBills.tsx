@@ -642,6 +642,7 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
         price_without_tax: 118,
         price_after_tax: 123.9,
         discount: 0,
+        discount_percent: 0,
         selling_price: 135,
         mrp: 135,
         gst_rate: 5,
@@ -664,6 +665,7 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
         price_without_tax: 365,
         price_after_tax: 365,
         discount: 0,
+        discount_percent: 0,
         selling_price: 420,
         mrp: 420,
         gst_rate: 0,
@@ -686,6 +688,7 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
         price_without_tax: 22,
         price_after_tax: 22,
         discount: 0,
+        discount_percent: 0,
         selling_price: 28,
         mrp: 28,
         gst_rate: 0,
@@ -708,6 +711,7 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
         price_without_tax: 540,
         price_after_tax: 604.8,
         discount: 0,
+        discount_percent: 0,
         selling_price: 610,
         mrp: 610,
         gst_rate: 12,
@@ -730,6 +734,7 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
         price_without_tax: 132,
         price_after_tax: 155.76,
         discount: 0,
+        discount_percent: 0,
         selling_price: 155,
         mrp: 155,
         gst_rate: 18,
@@ -847,6 +852,8 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
           const buyRate = Number(it.purchase_rate ?? it.price_without_tax ?? it.purchase_price) || 0;
           const gstRate = Number(it.gst_rate) || 0;
           const discount = Number(it.discount) || 0;
+          const gross = qty * buyRate;
+          const discPct = gross > 0 && discount > 0 ? Math.round(((discount / gross) * 100) * 100) / 100 : 0;
           const rateWithTax =
             Number(it.price_after_tax) ||
             Math.round(buyRate * (1 + gstRate / 100) * 100) / 100;
@@ -900,6 +907,7 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
             price_without_tax: buyRate,
             price_after_tax: rateWithTax,
             discount: discount,
+            discount_percent: discPct > 0 ? discPct : 0,
             selling_price: sellPrice,
             mrp: mrp,
             gst_rate: gstRate,
@@ -967,11 +975,40 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
           updated.discount = raw;
           const qtyStr = String(updated.quantity ?? updated.qty ?? '');
           const buyRateStr = String(updated.purchase_rate ?? updated.price_without_tax ?? updated.purchase_price ?? '');
-          if (raw !== '' && qtyStr !== '' && buyRateStr !== '') {
-            const q = parseFloat(qtyStr) || 0;
-            const r = parseFloat(buyRateStr) || 0;
-            const d = parseFloat(raw) || 0;
-            const taxable = Math.max(0, Math.round((q * r - d) * 100) / 100);
+          const q = parseFloat(qtyStr) || 0;
+          const r = parseFloat(buyRateStr) || 0;
+          const gross = Math.round(q * r * 100) / 100;
+          if (raw === '') {
+            updated.discount_percent = '';
+            const taxable = gross;
+            updated.amount = taxable > 0 ? taxable : '';
+            updated.total_amount = taxable > 0 ? taxable : '';
+          } else {
+            const discAmt = parseFloat(raw) || 0;
+            const discPct = gross > 0 ? Math.round(((discAmt / gross) * 100) * 100) / 100 : 0;
+            updated.discount_percent = discPct > 0 ? String(discPct) : (discAmt === 0 ? '0' : '');
+            const taxable = Math.max(0, Math.round((gross - discAmt) * 100) / 100);
+            updated.amount = taxable;
+            updated.total_amount = taxable;
+          }
+        } else if (field === 'discount_percent') {
+          const raw = sanitizeDecimalInput(String(value));
+          updated.discount_percent = raw;
+          const qtyStr = String(updated.quantity ?? updated.qty ?? '');
+          const buyRateStr = String(updated.purchase_rate ?? updated.price_without_tax ?? updated.purchase_price ?? '');
+          const q = parseFloat(qtyStr) || 0;
+          const r = parseFloat(buyRateStr) || 0;
+          const gross = Math.round(q * r * 100) / 100;
+          if (raw === '') {
+            updated.discount = '';
+            const taxable = gross;
+            updated.amount = taxable > 0 ? taxable : '';
+            updated.total_amount = taxable > 0 ? taxable : '';
+          } else {
+            const discPct = parseFloat(raw) || 0;
+            const discAmt = Math.round(((gross * discPct) / 100) * 100) / 100;
+            updated.discount = discAmt > 0 ? String(discAmt) : (discPct === 0 ? '0' : '');
+            const taxable = Math.max(0, Math.round((gross - discAmt) * 100) / 100);
             updated.amount = taxable;
             updated.total_amount = taxable;
           }
@@ -980,15 +1017,26 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
           updated.quantity = raw;
           updated.qty = raw;
           const buyRateStr = String(updated.purchase_rate ?? updated.price_without_tax ?? updated.purchase_price ?? '');
-          const discStr = String(updated.discount ?? '0');
           if (raw === '') {
             updated.amount = '';
             updated.total_amount = '';
           } else if (buyRateStr !== '') {
             const q = parseFloat(raw) || 0;
             const r = parseFloat(buyRateStr) || 0;
-            const d = parseFloat(discStr) || 0;
-            const taxable = Math.max(0, Math.round((q * r - d) * 100) / 100);
+            const gross = Math.round(q * r * 100) / 100;
+            const discPctStr = String(updated.discount_percent ?? '');
+            const discAmtStr = String(updated.discount ?? '');
+            let discAmt = 0;
+            if (discPctStr !== '') {
+              const discPct = parseFloat(discPctStr) || 0;
+              discAmt = Math.round(((gross * discPct) / 100) * 100) / 100;
+              updated.discount = discAmt > 0 ? String(discAmt) : (discPct === 0 ? '0' : '');
+            } else if (discAmtStr !== '') {
+              discAmt = parseFloat(discAmtStr) || 0;
+              const discPct = gross > 0 ? Math.round(((discAmt / gross) * 100) * 100) / 100 : 0;
+              updated.discount_percent = discPct > 0 ? String(discPct) : (discAmt === 0 ? '0' : '');
+            }
+            const taxable = Math.max(0, Math.round((gross - discAmt) * 100) / 100);
             updated.amount = taxable;
             updated.total_amount = taxable;
           }
@@ -999,7 +1047,6 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
           updated.purchase_rate = raw;
           const gst = Number(updated.gst_rate) || 0;
           const qtyStr = String(updated.quantity ?? updated.qty ?? '');
-          const discStr = String(updated.discount ?? '0');
           if (raw === '') {
             updated.price_after_tax = '';
             updated.amount = '';
@@ -1009,8 +1056,20 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
             updated.price_after_tax = Math.round(buyRate * (1 + gst / 100) * 100) / 100;
             if (qtyStr !== '') {
               const q = parseFloat(qtyStr) || 0;
-              const d = parseFloat(discStr) || 0;
-              const taxable = Math.max(0, Math.round((q * buyRate - d) * 100) / 100);
+              const gross = Math.round(q * buyRate * 100) / 100;
+              const discPctStr = String(updated.discount_percent ?? '');
+              const discAmtStr = String(updated.discount ?? '');
+              let discAmt = 0;
+              if (discPctStr !== '') {
+                const discPct = parseFloat(discPctStr) || 0;
+                discAmt = Math.round(((gross * discPct) / 100) * 100) / 100;
+                updated.discount = discAmt > 0 ? String(discAmt) : (discPct === 0 ? '0' : '');
+              } else if (discAmtStr !== '') {
+                discAmt = parseFloat(discAmtStr) || 0;
+                const discPct = gross > 0 ? Math.round(((discAmt / gross) * 100) * 100) / 100 : 0;
+                updated.discount_percent = discPct > 0 ? String(discPct) : (discAmt === 0 ? '0' : '');
+              }
+              const taxable = Math.max(0, Math.round((gross - discAmt) * 100) / 100);
               updated.amount = taxable;
               updated.total_amount = taxable;
             }
@@ -1020,7 +1079,6 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
           updated.price_after_tax = raw;
           const gst = Number(updated.gst_rate) || 0;
           const qtyStr = String(updated.quantity ?? updated.qty ?? '');
-          const discStr = String(updated.discount ?? '0');
           if (raw === '') {
             updated.price_without_tax = '';
             updated.purchase_price = '';
@@ -1035,8 +1093,20 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
             updated.purchase_rate = buyRate;
             if (qtyStr !== '') {
               const q = parseFloat(qtyStr) || 0;
-              const d = parseFloat(discStr) || 0;
-              const taxable = Math.max(0, Math.round((q * buyRate - d) * 100) / 100);
+              const gross = Math.round(q * buyRate * 100) / 100;
+              const discPctStr = String(updated.discount_percent ?? '');
+              const discAmtStr = String(updated.discount ?? '');
+              let discAmt = 0;
+              if (discPctStr !== '') {
+                const discPct = parseFloat(discPctStr) || 0;
+                discAmt = Math.round(((gross * discPct) / 100) * 100) / 100;
+                updated.discount = discAmt > 0 ? String(discAmt) : (discPct === 0 ? '0' : '');
+              } else if (discAmtStr !== '') {
+                discAmt = parseFloat(discAmtStr) || 0;
+                const discPct = gross > 0 ? Math.round(((discAmt / gross) * 100) * 100) / 100 : 0;
+                updated.discount_percent = discPct > 0 ? String(discPct) : (discAmt === 0 ? '0' : '');
+              }
+              const taxable = Math.max(0, Math.round((gross - discAmt) * 100) / 100);
               updated.amount = taxable;
               updated.total_amount = taxable;
             }
@@ -1060,6 +1130,8 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
               updated.purchase_price = buyRate;
               updated.purchase_rate = buyRate;
               updated.price_after_tax = Math.round(buyRate * (1 + gst / 100) * 100) / 100;
+              updated.discount = '0';
+              updated.discount_percent = '0';
             }
           }
         } else {
@@ -1086,6 +1158,7 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
       price_without_tax: 0,
       price_after_tax: 0,
       discount: 0,
+      discount_percent: 0,
       selling_price: null,
       mrp: null,
       gst_rate: 5,
@@ -2468,8 +2541,21 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
                     const rNum = parseFloat(String(item.price_without_tax ?? item.purchase_price ?? item.purchase_rate ?? 0)) || 0;
                     const dNum = parseFloat(String(item.discount ?? 0)) || 0;
                     const gstNum = Number(item.gst_rate) || 0;
-                    const taxableCalc = Math.max(0, qNum * rNum - dNum);
-                    const totalInclCalc = Math.round(taxableCalc * (1 + gstNum / 100) * 100) / 100;
+                    const mrpNum = parseFloat(String(item.mrp ?? 0)) || 0;
+                    const buyInclTaxNum =
+                      parseFloat(String(item.price_after_tax ?? 0)) ||
+                      Math.round(rNum * (1 + gstNum / 100) * 100) / 100;
+
+                    const grossCalc = Math.round(qNum * rNum * 100) / 100;
+                    const totalExclTax = Math.max(0, Math.round((grossCalc - dNum) * 100) / 100);
+                    const totalInclTax = Math.round(totalExclTax * (1 + gstNum / 100) * 100) / 100;
+
+                    const netUnitInclTax = qNum > 0 ? totalInclTax / qNum : buyInclTaxNum;
+                    const marginPct =
+                      mrpNum > 0
+                        ? Math.round((((mrpNum - netUnitInclTax) / mrpNum) * 100) * 10) / 10
+                        : null;
+
                     const rawBillTotal =
                       item.bill_line_total !== undefined &&
                       item.bill_line_total !== null &&
@@ -2478,13 +2564,13 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
                         : null;
 
                     let isMismatch = false;
-                    let calcExpected = Math.round(taxableCalc * 100) / 100;
+                    let calcExpected = totalInclTax;
                     if (rawBillTotal !== null && !isNaN(rawBillTotal) && rawBillTotal > 0 && qNum > 0 && rNum > 0) {
-                      const diffTaxable = Math.abs(rawBillTotal - taxableCalc);
-                      const diffIncl = Math.abs(rawBillTotal - totalInclCalc);
-                      if (diffTaxable > 1.0 && diffIncl > 1.0) {
+                      const diffIncl = Math.abs(rawBillTotal - totalInclTax);
+                      const diffTaxable = Math.abs(rawBillTotal - totalExclTax);
+                      if (diffIncl > 1.0 && diffTaxable > 1.0) {
                         isMismatch = true;
-                        calcExpected = diffIncl < diffTaxable ? totalInclCalc : Math.round(taxableCalc * 100) / 100;
+                        calcExpected = diffIncl <= diffTaxable ? totalInclTax : totalExclTax;
                       }
                     }
 
@@ -2505,7 +2591,7 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
                               <span>Check Math: Bill ₹{rawBillTotal} vs Calc ₹{calcExpected}</span>
                             </div>
                             <span className="text-[10px] text-amber-700 font-medium hidden sm:inline">
-                              Printed line total differs from Qty × Rate − Disc (+ GST)
+                              Printed bill line total differs from Total Incl. Tax (₹{totalInclTax})
                             </span>
                           </div>
                         )}
@@ -2634,7 +2720,7 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
                         </div>
 
                         {/* Row 3: Pricing, GST & Auto-Sync Commercials */}
-                        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2 items-end pt-1 border-t border-slate-100 font-mono">
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 2xl:grid-cols-10 gap-2 items-end pt-1 border-t border-slate-100 font-mono">
                           {/* Qty */}
                           <div>
                             <label className="block text-[9px] font-bold uppercase font-sans text-slate-400 mb-0.5">
@@ -2694,6 +2780,27 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
                               }
                               onChange={(e) =>
                                 updateItem(item.id || '', 'discount', e.target.value)
+                              }
+                              placeholder=""
+                              className="w-full text-right bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs text-slate-900 focus:bg-white focus:outline-none focus:border-[#4338CA]"
+                            />
+                          </div>
+
+                          {/* Discount % */}
+                          <div>
+                            <label className="block text-[9px] font-bold uppercase font-sans text-slate-400 mb-0.5">
+                              Disc %
+                            </label>
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              value={
+                                item.discount_percent !== undefined && item.discount_percent !== null
+                                  ? item.discount_percent
+                                  : ''
+                              }
+                              onChange={(e) =>
+                                updateItem(item.id || '', 'discount_percent', e.target.value)
                               }
                               placeholder=""
                               className="w-full text-right bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs text-slate-900 focus:bg-white focus:outline-none focus:border-[#4338CA]"
@@ -2762,7 +2869,7 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
                             />
                           </div>
 
-                          {/* Total Line Amount */}
+                          {/* Total Excl. Tax (₹) */}
                           <div>
                             <label className="block text-[9px] font-bold uppercase font-sans text-slate-400 mb-0.5">
                               Total Excl. (₹)
@@ -2782,6 +2889,45 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
                               }
                               placeholder=""
                               className="w-full text-right bg-slate-100 border border-slate-200 rounded-lg px-2 py-1 text-xs text-slate-900 font-bold focus:bg-white focus:outline-none focus:border-[#4338CA]"
+                            />
+                          </div>
+
+                          {/* Total Incl. Tax (₹) */}
+                          <div>
+                            <label className="block text-[9px] font-bold uppercase font-sans text-slate-400 mb-0.5">
+                              Total Incl. (₹)
+                            </label>
+                            <input
+                              type="text"
+                              readOnly
+                              value={totalInclTax > 0 ? totalInclTax.toFixed(2) : ''}
+                              placeholder="—"
+                              className="w-full text-right bg-slate-100 border border-slate-200 rounded-lg px-2 py-1 text-xs text-[#0D9488] font-bold focus:outline-none cursor-default"
+                            />
+                          </div>
+
+                          {/* Margin % */}
+                          <div>
+                            <label className="block text-[9px] font-bold uppercase font-sans text-slate-400 mb-0.5">
+                              Margin %
+                            </label>
+                            <input
+                              type="text"
+                              readOnly
+                              value={marginPct !== null ? `${marginPct}%` : ''}
+                              placeholder="—"
+                              className={`w-full text-center border rounded-lg px-2 py-1 text-xs font-bold focus:outline-none cursor-default ${
+                                marginPct === null
+                                  ? 'bg-slate-50 border-slate-200 text-slate-400'
+                                  : marginPct >= 0
+                                  ? 'bg-teal-50/60 border-teal-200 text-[#0D9488]'
+                                  : 'bg-rose-50 border-rose-200 text-rose-600'
+                              }`}
+                              title={
+                                marginPct !== null
+                                  ? `Margin: ${marginPct}% (Net Landing Cost: ₹${netUnitInclTax.toFixed(2)}, MRP: ₹${mrpNum.toFixed(2)})`
+                                  : 'Enter MRP to calculate margin %'
+                              }
                             />
                           </div>
                         </div>
