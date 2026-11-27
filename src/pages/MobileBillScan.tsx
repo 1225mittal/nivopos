@@ -1,30 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Camera,
-  FileUp,
-  FileText,
-  X,
   CheckCircle2,
   AlertCircle,
   Loader2,
-  Send,
   Store,
   RefreshCw,
-  ArrowUp,
-  ArrowDown,
-  Layers,
-  Plus,
-  Trash2,
+  FileCheck2,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { uploadToR2 } from '../lib/r2Upload';
-
-export interface QueuedBillFile {
-  id: string;
-  file: File;
-  previewUrl: string;
-  pageNumber: number;
-}
 
 export interface UploadedFileItem {
   name: string;
@@ -38,22 +23,17 @@ export const MobileBillScan: React.FC = () => {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [storeId, setStoreId] = useState<string | null>(null);
 
-  // Local queue of pending bill files with page numbers
-  const [queuedFiles, setQueuedFiles] = useState<QueuedBillFile[]>([]);
-
   const [isUploading, setIsUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<string>('');
-  const [uploadProgress, setUploadProgress] = useState<number>(0);
+  const [uploadedCount, setUploadedCount] = useState<number>(0);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [isSuccess, setIsSuccess] = useState(false);
-  const [uploadedCount, setUploadedCount] = useState(0);
-  const [closeWindowNotice, setCloseWindowNotice] = useState(false);
+  const [latestPreview, setLatestPreview] = useState<string | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
 
   const cameraInputRef = useRef<HTMLInputElement>(null);
-  const galleryInputRef = useRef<HTMLInputElement>(null);
   const realtimeChannelRef = useRef<any>(null);
 
-  // 1. Read session and store from URL query
+  // 1. Read session and store from URL query and pre-subscribe to Realtime channel
   useEffect(() => {
     try {
       const params = new URLSearchParams(window.location.search);
@@ -62,11 +42,11 @@ export const MobileBillScan: React.FC = () => {
       setSessionId(s);
       setStoreId(st);
 
-      // Subscribe to Realtime channel ahead of time
       if (s) {
         const channel = supabase.channel(`bill-scan-${s}`);
         channel.subscribe((status) => {
           if (status === 'SUBSCRIBED') {
+            setIsConnected(true);
             console.log(`[MobileScan] Connected to realtime channel bill-scan-${s}`);
           }
         });
@@ -83,180 +63,134 @@ export const MobileBillScan: React.FC = () => {
     };
   }, []);
 
-  // 2. Append new captured/selected photos to the queue without replacing existing ones
-  const handleFilesSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
+  // Helper: Client-side compression to max 1400px at 0.78 JPEG quality
+  const compressImage = async (file: File): Promise<File> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+          let { width, height } = img;
+          const maxDimension = 1400;
 
-    const newFilesArray = Array.from(files);
+          if (width > maxDimension || height > maxDimension) {
+            if (width > height) {
+              height = Math.round((height * maxDimension) / width);
+              width = maxDimension;
+            } else {
+              width = Math.round((width * maxDimension) / height);
+              height = maxDimension;
+            }
+          }
 
-    setQueuedFiles((prev) => {
-      const startPage = prev.length;
-      const newItems: QueuedBillFile[] = newFilesArray.map((file, idx) => ({
-        id: crypto.randomUUID(),
-        file,
-        previewUrl: file.type.startsWith('image/') ? URL.createObjectURL(file) : '',
-        pageNumber: startPage + idx + 1,
-      }));
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
 
-      const combined = [...prev, ...newItems];
-      return combined.map((item, index) => ({
-        ...item,
-        pageNumber: index + 1,
-      }));
-    });
+          if (!ctx) {
+            resolve(file);
+            return;
+          }
 
-    setErrorMessage(null);
-    e.target.value = '';
-  };
+          ctx.drawImage(img, 0, 0, width, height);
 
-  // Remove individual file from the queue and re-index page numbers
-  const handleRemoveFile = (idToRemove: string) => {
-    setQueuedFiles((prev) => {
-      const target = prev.find((item) => item.id === idToRemove);
-      if (target?.previewUrl) {
-        URL.revokeObjectURL(target.previewUrl);
-      }
-      const filtered = prev.filter((item) => item.id !== idToRemove);
-      return filtered.map((item, index) => ({
-        ...item,
-        pageNumber: index + 1,
-      }));
-    });
-  };
-
-  // Reorder queue item up or down
-  const handleMoveFile = (index: number, direction: 'up' | 'down') => {
-    const targetIndex = direction === 'up' ? index - 1 : index + 1;
-    if (targetIndex < 0 || targetIndex >= queuedFiles.length) return;
-
-    setQueuedFiles((prev) => {
-      const copy = [...prev];
-      const [moved] = copy.splice(index, 1);
-      copy.splice(targetIndex, 0, moved);
-      return copy.map((item, idx) => ({
-        ...item,
-        pageNumber: idx + 1,
-      }));
+          canvas.toBlob(
+            (blob) => {
+              if (!blob) {
+                resolve(file);
+                return;
+              }
+              const cleanBaseName = file.name.replace(/\.[^/.]+$/, '');
+              const compressedFile = new File([blob], `${cleanBaseName || 'bill-page'}.jpg`, {
+                type: 'image/jpeg',
+              });
+              resolve(compressedFile);
+            },
+            'image/jpeg',
+            0.78
+          );
+        };
+        img.onerror = () => resolve(file);
+        img.src = event.target?.result as string;
+      };
+      reader.onerror = () => resolve(file);
+      reader.readAsDataURL(file);
     });
   };
 
-  // Clear entire queue
-  const handleClearQueue = () => {
-    queuedFiles.forEach((item) => {
-      if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
-    });
-    setQueuedFiles([]);
-    setErrorMessage(null);
-  };
+  // 2. Handle instant capture & upload
+  const handleCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // Reset input so subsequent snaps re-fire onChange
 
-  // 3. Upload all queued files sequentially to Cloudflare R2 and broadcast with clubAsSingleBill: true
-  const handleUploadAllAndSend = async () => {
+    if (!file) return;
+
     if (!sessionId || !storeId) {
-      setErrorMessage('Missing session or store ID. Please rescan the QR code.');
-      return;
-    }
-    if (queuedFiles.length === 0) {
-      setErrorMessage('Please capture or choose at least one bill page first.');
+      setErrorMessage('Missing session or store ID. Please rescan QR code on desktop.');
       return;
     }
 
     setIsUploading(true);
     setErrorMessage(null);
-    setUploadProgress(0);
+    setUploadStatus('Compressing photo (1400px)...');
 
-    const uploadedFiles: UploadedFileItem[] = [];
+    // Create a local preview for immediate visual feedback
+    const localPreviewUrl = URL.createObjectURL(file);
+    setLatestPreview(localPreviewUrl);
 
     try {
-      for (let i = 0; i < queuedFiles.length; i++) {
-        const item = queuedFiles[i];
-        const pageNum = i + 1;
-        setUploadStatus(`Uploading Page ${pageNum} of ${queuedFiles.length} to Cloudflare R2...`);
+      // 1. Compress image to max 1400px at 0.78 quality
+      const compressedFile = await compressImage(file);
 
-        const { fileKey, publicUrl } = await uploadToR2({
-          file: item.file,
-          storeId,
-          folder: 'purchases',
-        });
+      // 2. Upload directly to Cloudflare R2
+      setUploadStatus('Uploading to Cloudflare R2...');
+      const { fileKey, publicUrl } = await uploadToR2({
+        file: compressedFile,
+        storeId,
+        folder: 'purchases',
+      });
 
-        uploadedFiles.push({
-          name: item.file.name,
-          type: item.file.type || 'image/jpeg',
-          publicUrl,
-          fileKey,
-          pageNumber: pageNum,
-        });
-
-        setUploadProgress(Math.round(((i + 1) / queuedFiles.length) * 100));
-      }
-
-      setUploadStatus('Syncing all pages with desktop in real time...');
-
-      // Broadcast payload to desktop listener
+      // 3. Broadcast to desktop on bill-scan-${sessionId}
+      setUploadStatus('Syncing with desktop screen...');
       let channel = realtimeChannelRef.current;
       if (!channel) {
         channel = supabase.channel(`bill-scan-${sessionId}`);
         realtimeChannelRef.current = channel;
+        await channel.subscribe();
       }
 
-      await new Promise<void>((resolve) => {
-        channel.subscribe((status: string) => {
-          if (status === 'SUBSCRIBED') {
-            resolve();
-          }
-        });
-        setTimeout(resolve, 600);
-      });
+      const newPageNumber = uploadedCount + 1;
+      const uploadedItem: UploadedFileItem = {
+        name: compressedFile.name,
+        type: 'image/jpeg',
+        publicUrl,
+        fileKey,
+        pageNumber: newPageNumber,
+      };
 
       await channel.send({
         type: 'broadcast',
         event: 'files-uploaded',
         payload: {
-          files: uploadedFiles,
+          files: [uploadedItem],
           clubAsSingleBill: true,
         },
       });
 
-      setUploadedCount(uploadedFiles.length);
-      setIsSuccess(true);
+      // 4. Update count and status
+      setUploadedCount(newPageNumber);
+      setUploadStatus('Uploaded! Tap Snap & Upload for next page');
     } catch (err: any) {
-      console.error('[MobileScan] Sequential upload failed:', err);
+      console.error('[MobileScan] Instant upload failed:', err);
       setErrorMessage(err?.message || 'Upload failed. Please check connection and try again.');
+      setUploadStatus('');
     } finally {
       setIsUploading(false);
     }
   };
 
-  // Reset state to start a fresh bill queue
-  const handleStartAnotherQueue = () => {
-    handleClearQueue();
-    setIsSuccess(false);
-    setErrorMessage(null);
-    setUploadStatus('');
-    setUploadProgress(0);
-    setCloseWindowNotice(false);
-  };
-
-  // Close window handler with fallback notice
-  const handleCloseWindow = () => {
-    try {
-      window.close();
-      // If browser security blocks window.close() (common on mobile browsers)
-      setTimeout(() => {
-        setCloseWindowNotice(true);
-      }, 300);
-    } catch {
-      setCloseWindowNotice(true);
-    }
-  };
-
-  const formatFileSize = (bytes: number) => {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  };
-
-  // ================= VIEW A: MISSING SESSION ERROR =================
+  // Missing session/store guard
   if (!sessionId || !storeId) {
     return (
       <div className="min-h-screen bg-[#F4F6F9] flex flex-col items-center justify-center p-4">
@@ -267,8 +201,8 @@ export const MobileBillScan: React.FC = () => {
           <div>
             <h1 className="text-base font-bold text-[#0F172A]">Invalid Scan Session</h1>
             <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">
-              Session ID or Store ID is missing in this link. Please open Purchase Bills on your
-              desktop computer and rescan the QR code.
+              Session or Store parameter is missing in this link. Please open Purchase Bills on your
+              desktop counter and scan the QR code.
             </p>
           </div>
           <div className="pt-2">
@@ -285,68 +219,9 @@ export const MobileBillScan: React.FC = () => {
     );
   }
 
-  // ================= VIEW B: SUCCESS CONFIRMATION =================
-  if (isSuccess) {
-    return (
-      <div className="min-h-screen bg-[#F4F6F9] flex flex-col items-center justify-center p-4">
-        <div className="w-full max-w-sm bg-white rounded-3xl border border-slate-200 p-6 shadow-sm text-center space-y-5">
-          <div className="w-16 h-16 rounded-2xl bg-teal-50 border border-teal-200 flex items-center justify-center text-[#0D9488] mx-auto shadow-sm">
-            <CheckCircle2 className="w-9 h-9" />
-          </div>
-
-          <div className="space-y-1.5">
-            <h1 className="text-lg font-bold text-[#0F172A]">Sent to Desktop!</h1>
-            <p className="text-xs font-bold text-[#0D9488]">
-              {uploadedCount} {uploadedCount === 1 ? 'page' : 'pages'} transferred as 1 bill
-            </p>
-            <p className="text-xs text-slate-500 pt-1 leading-relaxed">
-              All pages were uploaded to Cloudflare R2 and synced to your desktop screen in real-time.
-            </p>
-          </div>
-
-          {closeWindowNotice && (
-            <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-[11px] text-slate-600">
-              You can now safely switch apps or close this browser tab.
-            </div>
-          )}
-
-          <div className="pt-3 border-t border-slate-100 space-y-2.5">
-            {/* Primary Action: Done (Close Window) */}
-            <button
-              onClick={handleCloseWindow}
-              className="w-full py-3 px-4 rounded-xl bg-[#4338CA] hover:bg-[#3730A3] text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm active:scale-[0.99] transition-all"
-            >
-              <span>Done (Close Window)</span>
-            </button>
-
-            {/* Secondary Action: Scan Another Multi-Page Bill */}
-            <button
-              onClick={handleStartAnotherQueue}
-              className="w-full py-2.5 px-4 rounded-xl bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold text-xs flex items-center justify-center gap-1.5 active:scale-[0.99] transition-all"
-            >
-              <Plus className="w-3.5 h-3.5 text-[#4338CA]" />
-              <span>Scan Another Multi-Page Bill</span>
-            </button>
-          </div>
-        </div>
-
-        <div className="mt-6 flex items-center gap-1.5 text-[11px] text-slate-400">
-          <Store className="w-3.5 h-3.5" />
-          <span>Nivo POS • Multi-Page Scanner</span>
-        </div>
-      </div>
-    );
-  }
-
-  // ================= VIEW C: MAIN QUEUE & SCANNER INTERFACE =================
-  const queueCounterText =
-    queuedFiles.length === 1
-      ? '1 page queued for 1 bill'
-      : `${queuedFiles.length} pages queued for 1 bill`;
-
   return (
-    <div className="min-h-screen bg-[#F4F6F9] py-5 px-3 flex flex-col justify-between">
-      <div className="max-w-md w-full mx-auto space-y-4">
+    <div className="min-h-screen bg-[#F4F6F9] py-6 px-4 flex flex-col justify-between">
+      <div className="max-w-sm w-full mx-auto space-y-4">
         {/* Header Branding */}
         <div className="flex items-center justify-between px-1">
           <div className="flex items-center gap-2">
@@ -355,222 +230,133 @@ export const MobileBillScan: React.FC = () => {
             </div>
             <div>
               <h1 className="text-sm font-bold text-[#0F172A] leading-tight">Nivo POS</h1>
-              <p className="text-[10px] text-slate-500">Multi-Page Bill Scanner</p>
+              <p className="text-[10px] text-slate-500">Mobile Camera Sync</p>
             </div>
           </div>
-          <div className="flex items-center gap-1.5 text-[10px] font-mono text-slate-600 bg-white px-2 py-0.5 rounded-full border border-slate-200 shadow-2xs">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#0D9488]" />
-            <span>Desktop Connected</span>
+
+          <div className="flex items-center gap-1.5 text-[10px] font-mono text-slate-600 bg-white px-2.5 py-1 rounded-full border border-slate-200 shadow-2xs">
+            <span
+              className={`w-2 h-2 rounded-full ${
+                isConnected ? 'bg-[#0D9488] animate-pulse' : 'bg-amber-400'
+              }`}
+            />
+            <span className="font-semibold">{isConnected ? 'Live Connected' : 'Connecting...'}</span>
           </div>
         </div>
 
-        {/* Hidden File Inputs */}
+        {/* Hidden Camera Input with capture="environment" */}
         <input
           ref={cameraInputRef}
           type="file"
           accept="image/*"
           capture="environment"
-          multiple
           className="hidden"
-          onChange={handleFilesSelected}
-        />
-        <input
-          ref={galleryInputRef}
-          type="file"
-          accept="image/*,application/pdf"
-          multiple
-          className="hidden"
-          onChange={handleFilesSelected}
+          onChange={handleCapture}
         />
 
-        {/* Capture / Select Action Card */}
-        <div className="bg-white rounded-3xl border border-slate-200 p-4 shadow-sm space-y-3">
-          <div className="text-center pb-1">
-            <h2 className="text-sm font-bold text-[#0F172A]">
-              {queuedFiles.length === 0
-                ? 'Capture Bill Photo (Page 1)'
-                : `Add Next Page (Page ${queuedFiles.length + 1})`}
+        {/* Main Card */}
+        <div className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm text-center space-y-5">
+          {/* Status or Latest Preview Area */}
+          {latestPreview ? (
+            <div className="relative w-36 h-36 mx-auto rounded-2xl overflow-hidden border border-slate-200 bg-slate-50 shadow-inner flex items-center justify-center">
+              <img
+                src={latestPreview}
+                alt="Latest Bill Page"
+                className="w-full h-full object-cover"
+              />
+              {isUploading ? (
+                <div className="absolute inset-0 bg-white/70 backdrop-blur-2xs flex flex-col items-center justify-center gap-2 text-[#4338CA]">
+                  <Loader2 className="w-7 h-7 animate-spin" />
+                  <span className="text-[10px] font-bold font-mono">Uploading...</span>
+                </div>
+              ) : (
+                <div className="absolute top-2 right-2 bg-[#0D9488] text-white p-1 rounded-full shadow-xs">
+                  <CheckCircle2 className="w-4 h-4" />
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="w-20 h-20 rounded-3xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-[#4338CA] mx-auto shadow-xs">
+              <Camera className="w-10 h-10" />
+            </div>
+          )}
+
+          <div>
+            <h2 className="text-base font-bold text-[#0F172A]">
+              {uploadedCount === 0
+                ? 'Capture Purchase Bill'
+                : `Page ${uploadedCount} Uploaded!`}
             </h2>
-            <p className="text-[11px] text-slate-500 mt-0.5">
-              Snap photos of all pages. They will be bundled into a single inward bill.
+            <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+              Snap a clear photo of the invoice. It compresses and syncs directly to your desktop
+              screen in real time.
             </p>
           </div>
 
-          <div className="grid grid-cols-1 gap-2.5">
-            {/* Primary Action: Camera */}
+          {/* Upload Status / Success Notice */}
+          {uploadStatus && (
+            <div
+              className={`p-3 rounded-2xl border text-xs font-semibold flex items-center justify-center gap-2 ${
+                isUploading
+                  ? 'bg-indigo-50 border-indigo-200 text-[#4338CA]'
+                  : 'bg-teal-50 border-teal-200 text-[#0D9488]'
+              }`}
+            >
+              {isUploading ? (
+                <Loader2 className="w-4 h-4 animate-spin shrink-0 text-[#4338CA]" />
+              ) : (
+                <CheckCircle2 className="w-4 h-4 shrink-0 text-[#0D9488]" />
+              )}
+              <span>{uploadStatus}</span>
+            </div>
+          )}
+
+          {/* Error Message */}
+          {errorMessage && (
+            <div className="p-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center justify-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span>{errorMessage}</span>
+            </div>
+          )}
+
+          {/* Single Primary Action Button */}
+          <div className="pt-1">
             <button
               type="button"
               onClick={() => cameraInputRef.current?.click()}
               disabled={isUploading}
-              className="w-full py-3.5 px-4 rounded-2xl bg-[#4338CA] hover:bg-[#3730A3] disabled:opacity-50 text-white font-bold text-sm flex items-center justify-center gap-2.5 shadow-sm active:scale-[0.99] transition-all"
+              className="w-full py-4 px-6 rounded-2xl bg-[#4338CA] hover:bg-[#3730A3] active:scale-[0.98] disabled:opacity-60 text-white font-bold text-base shadow-md shadow-indigo-100 flex items-center justify-center gap-2.5 transition-all cursor-pointer"
             >
-              <Camera className="w-5 h-5 shrink-0" />
-              <span>
-                {queuedFiles.length === 0
-                  ? 'Take Photo of Page 1'
-                  : `Take Photo of Page ${queuedFiles.length + 1}`}
+              {isUploading ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  <span>Processing & Uploading...</span>
+                </>
+              ) : (
+                <>
+                  <Camera className="w-5 h-5" />
+                  <span>Snap & Upload</span>
+                </>
+              )}
+            </button>
+          </div>
+
+          {/* Page Counter & Completion Helper */}
+          {uploadedCount > 0 && (
+            <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-[11px] text-slate-500 font-mono">
+              <span className="flex items-center gap-1 text-[#0D9488] font-bold font-sans">
+                <FileCheck2 className="w-3.5 h-3.5" />
+                <span>{uploadedCount} {uploadedCount === 1 ? 'page' : 'pages'} transferred</span>
               </span>
-            </button>
-
-            {/* Secondary Action: File / Gallery */}
-            <button
-              type="button"
-              onClick={() => galleryInputRef.current?.click()}
-              disabled={isUploading}
-              className="w-full py-3 px-4 rounded-2xl bg-white border border-slate-300 hover:bg-slate-50 disabled:opacity-50 text-slate-700 font-bold text-xs flex items-center justify-center gap-2 active:scale-[0.99] transition-all"
-            >
-              <FileUp className="w-4 h-4 text-slate-500 shrink-0" />
-              <span>Choose More Pages from Gallery / PDF</span>
-            </button>
-          </div>
+              <span>Done? Close tab anytime</span>
+            </div>
+          )}
         </div>
-
-        {/* Queued Bill Pages Section */}
-        {queuedFiles.length > 0 && (
-          <div className="bg-white rounded-3xl border border-slate-200 p-4 shadow-sm space-y-3.5">
-            {/* Queue Counter Bar */}
-            <div className="flex items-center justify-between border-b border-slate-100 pb-2.5 px-0.5">
-              <div className="flex items-center gap-2">
-                <span className="w-6 h-6 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center text-[#4338CA] font-bold text-xs">
-                  <Layers className="w-3.5 h-3.5" />
-                </span>
-                <span className="text-xs font-bold text-[#0F172A]">{queueCounterText}</span>
-              </div>
-
-              {!isUploading && (
-                <button
-                  type="button"
-                  onClick={handleClearQueue}
-                  className="text-[11px] text-rose-600 hover:underline font-semibold flex items-center gap-1"
-                >
-                  <Trash2 className="w-3 h-3" />
-                  <span>Clear queue</span>
-                </button>
-              )}
-            </div>
-
-            {/* List of Queued Pages with Reordering & Badges */}
-            <div className="space-y-2.5 max-h-72 overflow-y-auto pr-0.5">
-              {queuedFiles.map((item, idx) => (
-                <div
-                  key={item.id}
-                  className="flex items-center justify-between p-2.5 rounded-2xl bg-slate-50 border border-slate-200 text-xs"
-                >
-                  <div className="flex items-center gap-3 min-w-0 pr-2">
-                    {/* Thumbnail Preview */}
-                    <div className="relative shrink-0">
-                      {item.previewUrl ? (
-                        <img
-                          src={item.previewUrl}
-                          alt={`Page ${item.pageNumber}`}
-                          className="w-12 h-12 rounded-xl object-cover border border-slate-200 bg-white"
-                        />
-                      ) : (
-                        <div className="w-12 h-12 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-[#4338CA]">
-                          <FileText className="w-6 h-6" />
-                        </div>
-                      )}
-                      <span className="absolute -top-1.5 -left-1.5 px-1.5 py-0.2 rounded-md bg-[#4338CA] text-white font-bold text-[9px] shadow-2xs">
-                        P{item.pageNumber}
-                      </span>
-                    </div>
-
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-1.5">
-                        <span className="font-bold text-[#0F172A] text-xs">
-                          Page {item.pageNumber}
-                        </span>
-                        <span className="text-[10px] font-mono text-slate-500">
-                          ({formatFileSize(item.file.size)})
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-slate-500 truncate mt-0.5">{item.file.name}</p>
-                    </div>
-                  </div>
-
-                  {/* Actions: Reorder up/down & Remove */}
-                  {!isUploading && (
-                    <div className="flex items-center gap-1 shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => handleMoveFile(idx, 'up')}
-                        disabled={idx === 0}
-                        className="p-1 rounded-lg text-slate-400 hover:text-slate-700 disabled:opacity-20 hover:bg-white transition-colors"
-                        title="Move Up"
-                      >
-                        <ArrowUp className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleMoveFile(idx, 'down')}
-                        disabled={idx === queuedFiles.length - 1}
-                        className="p-1 rounded-lg text-slate-400 hover:text-slate-700 disabled:opacity-20 hover:bg-white transition-colors"
-                        title="Move Down"
-                      >
-                        <ArrowDown className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveFile(item.id)}
-                        className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-white transition-colors ml-0.5"
-                        title="Remove Page"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-
-            {/* Error notice if any */}
-            {errorMessage && (
-              <div className="p-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0" />
-                <span>{errorMessage}</span>
-              </div>
-            )}
-
-            {/* Prominent Upload All & Send to Desktop Button */}
-            <div className="pt-1 space-y-2">
-              <button
-                type="button"
-                onClick={handleUploadAllAndSend}
-                disabled={isUploading}
-                className="w-full py-4 px-5 rounded-2xl bg-[#4338CA] hover:bg-[#3730A3] disabled:opacity-60 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-md shadow-indigo-100 active:scale-[0.99] transition-all"
-              >
-                {isUploading ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    <span>{uploadStatus || 'Uploading pages to Cloudflare R2...'}</span>
-                  </>
-                ) : (
-                  <>
-                    <Send className="w-4 h-4" />
-                    <span>
-                      Upload All & Send to Desktop ({queuedFiles.length}{' '}
-                      {queuedFiles.length === 1 ? 'Page' : 'Pages'})
-                    </span>
-                  </>
-                )}
-              </button>
-
-              {isUploading && uploadProgress > 0 && (
-                <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
-                  <div
-                    className="bg-[#4338CA] h-2 transition-all duration-300 rounded-full"
-                    style={{ width: `${uploadProgress}%` }}
-                  />
-                </div>
-              )}
-            </div>
-          </div>
-        )}
       </div>
 
-      {/* Footer Branding */}
-      <div className="text-center py-3 text-[10px] text-slate-400">
-        nivopos.in • Cloudflare R2 Powered Multi-Page Scan
+      {/* Footer Note */}
+      <div className="text-center py-2 text-[10px] text-slate-400">
+        nivopos.in • Cloudflare R2 & Realtime Sync
       </div>
     </div>
   );

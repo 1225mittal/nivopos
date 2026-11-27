@@ -401,14 +401,11 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
           });
 
           setInputMode('upload');
-          if (payload?.clubAsSingleBill || incomingFiles.length > 1) {
-            setClubAsSingleBill(true);
-          }
           setFeedback({
             type: 'success',
-            message: `Received ${incomingFiles.length} page${
+            message: `Received ${incomingFiles.length} snap${
               incomingFiles.length > 1 ? 's' : ''
-            } from phone! Ready to extract with Groq AI`,
+            } from phone! Added to queue.`,
           });
         }
 
@@ -560,7 +557,11 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
       if (target?.previewUrl) {
         URL.revokeObjectURL(target.previewUrl);
       }
-      return prev.filter((f) => f.id !== id);
+      const updated = prev.filter((f) => f.id !== id);
+      if (activeSeparateFileIndex >= updated.length) {
+        setActiveSeparateFileIndex(Math.max(0, updated.length - 1));
+      }
+      return updated;
     });
   };
 
@@ -569,6 +570,8 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
       if (f.previewUrl) URL.revokeObjectURL(f.previewUrl);
     });
     setSelectedFiles([]);
+    setActiveSeparateFileIndex(0);
+    setReceivedPhoneCount(0);
   };
 
   // Sample Wholesaler Bill Demo Loader
@@ -1996,7 +1999,7 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
                       <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-slate-200/80">
                         <div className="flex items-center gap-2">
                           <span className="text-xs font-bold text-[#0F172A]">
-                            Uploaded Bills Queue ({selectedFiles.length} {selectedFiles.length === 1 ? 'bill' : 'bills'})
+                            Uploaded Bills Queue ({selectedFiles.length} {selectedFiles.length === 1 ? 'bill/page' : 'bills/pages'})
                           </span>
                           {clubAsSingleBill && selectedFiles.length > 1 && (
                             <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-indigo-50 text-[#4338CA] border border-indigo-200">
@@ -2007,27 +2010,40 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
 
                         {selectedFiles.length > 0 && (
                           <div className="flex items-center gap-2">
-                            {selectedFiles.length > 1 && (
+                            {/* Toggle: Club pages as 1 bill vs Separate bills */}
+                            <div className="inline-flex rounded-xl p-0.5 bg-slate-200/80 border border-slate-200">
                               <button
                                 type="button"
-                                onClick={() => setClubAsSingleBill((prev) => !prev)}
-                                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-colors flex items-center gap-1.5 shadow-2xs ${
+                                onClick={() => setClubAsSingleBill(true)}
+                                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 ${
                                   clubAsSingleBill
-                                    ? 'bg-indigo-50 text-[#4338CA] border-indigo-200'
-                                    : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                                    ? 'bg-[#4338CA] text-white shadow-xs'
+                                    : 'text-slate-600 hover:text-slate-900'
                                 }`}
+                                title="Club all pages into a single multi-page bill"
                               >
                                 <Layers className="w-3.5 h-3.5" />
-                                <span>
-                                  {clubAsSingleBill ? 'Club pages as 1 bill' : 'Split into separate bills'}
-                                </span>
+                                <span>Club as 1 Bill</span>
                               </button>
-                            )}
+                              <button
+                                type="button"
+                                onClick={() => setClubAsSingleBill(false)}
+                                className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all flex items-center gap-1.5 ${
+                                  !clubAsSingleBill
+                                    ? 'bg-[#4338CA] text-white shadow-xs'
+                                    : 'text-slate-600 hover:text-slate-900'
+                                }`}
+                                title="Treat each page as a separate distinct bill"
+                              >
+                                <FileText className="w-3.5 h-3.5" />
+                                <span>Separate Bills</span>
+                              </button>
+                            </div>
 
                             <button
                               type="button"
                               onClick={clearAllSelectedFiles}
-                              className="text-[11px] text-rose-600 hover:underline font-semibold"
+                              className="text-[11px] text-rose-600 hover:underline font-semibold ml-1"
                             >
                               Clear All
                             </button>
@@ -2035,147 +2051,184 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
                         )}
                       </div>
 
+                      {/* Mode Explainer Sub-Banner */}
+                      {selectedFiles.length > 1 && (
+                        <div className="flex items-center justify-between text-[11px] px-1 text-slate-600">
+                          {clubAsSingleBill ? (
+                            <span className="flex items-center gap-1.5 text-[#4338CA] font-medium">
+                              <Layers className="w-3.5 h-3.5 shrink-0" />
+                              <span>Multi-Page Clubbing: All {selectedFiles.length} pages will be extracted together under 1 bill record.</span>
+                            </span>
+                          ) : (
+                            <span className="flex items-center gap-1.5 text-slate-700 font-medium">
+                              <FileText className="w-3.5 h-3.5 text-[#4338CA] shrink-0" />
+                              <span>Separate Mode: Select a bill card below to extract, or click "Extract This Bill" directly on any item.</span>
+                            </span>
+                          )}
+                        </div>
+                      )}
+
                       {/* Queue List */}
                       {selectedFiles.length === 0 ? (
                         <div className="py-4 text-center text-xs text-slate-500">
                           Queue is empty. Drop wholesale invoices or scan via Phone QR above to queue bills.
                         </div>
                       ) : (
-                        <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                          {selectedFiles.map((fileInfo, idx) => (
-                            <div
-                              key={fileInfo.id}
-                              className={`flex items-center justify-between p-2.5 rounded-xl border transition-all text-xs ${
-                                !clubAsSingleBill && activeSeparateFileIndex === idx
-                                  ? 'border-[#4338CA] bg-indigo-50/40 shadow-xs'
-                                  : 'border-slate-200 bg-white shadow-xs'
-                              }`}
-                            >
+                        <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                          {selectedFiles.map((fileInfo, idx) => {
+                            const isSelectedSeparate = !clubAsSingleBill && activeSeparateFileIndex === idx;
+
+                            return (
                               <div
-                                className="flex items-center gap-2.5 min-w-0 cursor-pointer"
+                                key={fileInfo.id}
                                 onClick={() => {
                                   if (!clubAsSingleBill) setActiveSeparateFileIndex(idx);
                                 }}
+                                className={`flex items-center justify-between p-2.5 rounded-xl border transition-all text-xs ${
+                                  isSelectedSeparate
+                                    ? 'border-[#4338CA] bg-indigo-50/50 ring-2 ring-indigo-200 shadow-xs cursor-pointer'
+                                    : 'border-slate-200 bg-white hover:border-slate-300 shadow-xs cursor-pointer'
+                                }`}
                               >
-                                {fileInfo.type === 'pdf' ? (
-                                  <div className="w-8 h-8 rounded-lg bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-600 shrink-0">
-                                    <FileText className="w-4 h-4" />
-                                  </div>
-                                ) : (
-                                  <div className="w-8 h-8 rounded-lg border border-slate-200 overflow-hidden bg-slate-50 shrink-0 flex items-center justify-center">
-                                    {fileInfo.previewUrl ? (
-                                      <img
-                                        src={fileInfo.previewUrl}
-                                        alt="thumb"
-                                        className="w-full h-full object-cover"
-                                      />
-                                    ) : (
-                                      <ImageIcon className="w-4 h-4 text-slate-400" />
-                                    )}
-                                  </div>
-                                )}
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  {fileInfo.type === 'pdf' ? (
+                                    <div className="w-9 h-9 rounded-lg bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-600 shrink-0">
+                                      <FileText className="w-4 h-4" />
+                                    </div>
+                                  ) : (
+                                    <div className="w-9 h-9 rounded-lg border border-slate-200 overflow-hidden bg-slate-50 shrink-0 flex items-center justify-center">
+                                      {fileInfo.previewUrl ? (
+                                        <img
+                                          src={fileInfo.previewUrl}
+                                          alt="thumb"
+                                          className="w-full h-full object-cover"
+                                        />
+                                      ) : (
+                                        <ImageIcon className="w-4 h-4 text-slate-400" />
+                                      )}
+                                    </div>
+                                  )}
 
-                                <div className="min-w-0">
-                                  <div className="flex items-center gap-1.5">
-                                    {clubAsSingleBill && selectedFiles.length > 1 && (
-                                      <span className="px-1.5 py-0.2 rounded font-mono font-bold text-[9px] bg-[#4338CA] text-white">
-                                        Page {idx + 1}
-                                      </span>
-                                    )}
-                                    <p className="font-semibold text-[#0F172A] truncate max-w-[150px] sm:max-w-xs md:max-w-md">
-                                      {fileInfo.name}
-                                    </p>
-                                  </div>
-                                  <div className="flex items-center gap-1.5 text-[10px] text-slate-500 mt-0.5">
-                                    <span
-                                      className={`px-1.5 py-0.2 rounded font-mono font-bold ${
-                                        fileInfo.type === 'pdf'
-                                          ? 'bg-rose-50 text-rose-700 border border-rose-200'
-                                          : 'bg-indigo-50 text-[#4338CA] border border-indigo-200'
-                                      }`}
-                                    >
-                                      {fileInfo.type === 'pdf' ? 'PDF' : 'IMAGE'}
-                                    </span>
-                                    <span>{formatFileSize(fileInfo.size)}</span>
-                                    {fileInfo.r2PublicUrl && (
-                                      <span className="text-[#0D9488] font-mono font-semibold">
-                                        Synced
-                                      </span>
-                                    )}
-                                    {!clubAsSingleBill && selectedFiles.length > 1 && (
+                                  <div className="min-w-0">
+                                    <div className="flex items-center gap-1.5">
+                                      {clubAsSingleBill ? (
+                                        <span className="px-1.5 py-0.2 rounded font-mono font-bold text-[9px] bg-[#4338CA] text-white">
+                                          Page {idx + 1}
+                                        </span>
+                                      ) : (
+                                        <span className="px-1.5 py-0.2 rounded font-mono font-bold text-[9px] bg-slate-100 text-slate-700 border border-slate-200">
+                                          Bill #{idx + 1}
+                                        </span>
+                                      )}
+                                      <p className="font-semibold text-[#0F172A] truncate max-w-[150px] sm:max-w-xs md:max-w-md">
+                                        {fileInfo.name}
+                                      </p>
+                                    </div>
+                                    <div className="flex items-center gap-1.5 text-[10px] text-slate-500 mt-0.5">
                                       <span
-                                        className={`text-[9px] font-bold px-1 rounded ${
-                                          activeSeparateFileIndex === idx
-                                            ? 'bg-indigo-100 text-[#4338CA]'
-                                            : 'text-slate-400 hover:text-slate-600'
+                                        className={`px-1.5 py-0.2 rounded font-mono font-bold ${
+                                          fileInfo.type === 'pdf'
+                                            ? 'bg-rose-50 text-rose-700 border border-rose-200'
+                                            : 'bg-indigo-50 text-[#4338CA] border border-indigo-200'
                                         }`}
                                       >
-                                        {activeSeparateFileIndex === idx ? '● Active' : 'Click to select'}
+                                        {fileInfo.type === 'pdf' ? 'PDF' : 'IMAGE'}
                                       </span>
-                                    )}
+                                      <span>{formatFileSize(fileInfo.size)}</span>
+                                      {fileInfo.r2PublicUrl && (
+                                        <span className="text-[#0D9488] font-mono font-semibold">
+                                          Synced (R2)
+                                        </span>
+                                      )}
+                                      {!clubAsSingleBill && (
+                                        <span
+                                          className={`text-[9px] font-bold px-1.5 py-0.2 rounded ${
+                                            isSelectedSeparate
+                                              ? 'bg-[#4338CA] text-white'
+                                              : 'text-slate-400 bg-slate-100'
+                                          }`}
+                                        >
+                                          {isSelectedSeparate ? '● Selected for Extraction' : 'Click to select'}
+                                        </span>
+                                      )}
+                                    </div>
                                   </div>
                                 </div>
+
+                                <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                                  {/* Per-card Extract action */}
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setActiveSeparateFileIndex(idx);
+                                      handleParseBill(idx);
+                                    }}
+                                    disabled={isParsing}
+                                    className="px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-[#4338CA] border border-indigo-200 text-[11px] font-bold flex items-center gap-1 transition-colors shadow-2xs disabled:opacity-50"
+                                    title={clubAsSingleBill ? "Extract this page only" : "Extract this bill"}
+                                  >
+                                    <Sparkles className="w-3.5 h-3.5" />
+                                    <span className="hidden sm:inline">
+                                      {clubAsSingleBill ? 'Extract This Page' : 'Extract This Bill'}
+                                    </span>
+                                  </button>
+
+                                  {/* Page reordering when clubbed */}
+                                  {clubAsSingleBill && selectedFiles.length > 1 && (
+                                    <>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          moveSelectedFile(idx, 'up');
+                                        }}
+                                        disabled={idx === 0}
+                                        className="p-1 rounded text-slate-400 hover:text-slate-700 disabled:opacity-20 transition-colors"
+                                        title="Move up"
+                                      >
+                                        <ArrowUp className="w-3.5 h-3.5" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          moveSelectedFile(idx, 'down');
+                                        }}
+                                        disabled={idx === selectedFiles.length - 1}
+                                        className="p-1 rounded text-slate-400 hover:text-slate-700 disabled:opacity-20 transition-colors"
+                                        title="Move down"
+                                      >
+                                        <ArrowDown className="w-3.5 h-3.5" />
+                                      </button>
+                                    </>
+                                  )}
+
+                                  {/* Discard / Remove unwanted page */}
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      removeSelectedFile(fileInfo.id);
+                                    }}
+                                    className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 border border-transparent hover:border-rose-200 transition-colors"
+                                    title="Discard / Remove this page from queue"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
                               </div>
-
-                              <div className="flex items-center gap-1.5 shrink-0 ml-2">
-                                {/* Per-card Extract with Groq AI action */}
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setActiveSeparateFileIndex(idx);
-                                    handleParseBill(idx);
-                                  }}
-                                  disabled={isParsing}
-                                  className="px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-[#4338CA] border border-indigo-200 text-[11px] font-bold flex items-center gap-1 transition-colors shadow-2xs disabled:opacity-50"
-                                  title="Extract this bill with Groq AI"
-                                >
-                                  <Sparkles className="w-3.5 h-3.5" />
-                                  <span className="hidden sm:inline">Extract with Groq AI</span>
-                                </button>
-
-                                {clubAsSingleBill && selectedFiles.length > 1 && (
-                                  <>
-                                    <button
-                                      type="button"
-                                      onClick={() => moveSelectedFile(idx, 'up')}
-                                      disabled={idx === 0}
-                                      className="p-1 rounded text-slate-400 hover:text-slate-700 disabled:opacity-20 transition-colors"
-                                      title="Move up"
-                                    >
-                                      <ArrowUp className="w-3.5 h-3.5" />
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => moveSelectedFile(idx, 'down')}
-                                      disabled={idx === selectedFiles.length - 1}
-                                      className="p-1 rounded text-slate-400 hover:text-slate-700 disabled:opacity-20 transition-colors"
-                                      title="Move down"
-                                    >
-                                      <ArrowDown className="w-3.5 h-3.5" />
-                                    </button>
-                                  </>
-                                )}
-
-                                <button
-                                  type="button"
-                                  onClick={() => removeSelectedFile(fileInfo.id)}
-                                  className="p-1 rounded-lg text-slate-400 hover:text-rose-600 transition-colors"
-                                  title="Remove file"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       )}
 
-                      {/* Primary Full Extract Button */}
+                      {/* Primary Extraction Button */}
                       <button
                         type="button"
                         onClick={() => handleParseBill()}
                         disabled={isParsing || selectedFiles.length === 0}
-                        className="w-full py-3 px-4 rounded-xl bg-[#4338CA] hover:bg-[#3730A3] text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-md hover:shadow-lg disabled:opacity-50"
+                        className="w-full py-3.5 px-4 rounded-xl bg-[#4338CA] hover:bg-[#3730A3] text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-md hover:shadow-lg disabled:opacity-50"
                       >
                         {isParsing ? (
                           <>
@@ -2187,9 +2240,9 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
                             <Sparkles className="w-4 h-4" />
                             <span>
                               {clubAsSingleBill && selectedFiles.length > 1
-                                ? `Extract ${selectedFiles.length}-Page Bill with Groq AI`
-                                : selectedFiles.length > 1
-                                ? `Extract Active Bill (${activeSeparateFileIndex + 1} of ${selectedFiles.length}) with Groq AI`
+                                ? `Extract All ${selectedFiles.length} Pages as 1 Combined Bill (Groq AI)`
+                                : !clubAsSingleBill && selectedFiles.length > 1
+                                ? `Extract Selected Bill #${activeSeparateFileIndex + 1} (${selectedFiles[Math.min(activeSeparateFileIndex, selectedFiles.length - 1)]?.name || ''}) (Groq AI)`
                                 : 'Extract Products & Seller Details (Groq AI)'}
                             </span>
                           </>
@@ -3882,7 +3935,7 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
 
       {/* ================= SCAN VIA PHONE QR MODAL ================= */}
       {phoneQrModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-800/40 backdrop-blur-xs animate-in fade-in duration-150">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-700/40 backdrop-blur-sm animate-in fade-in duration-150">
           <div className="relative w-full max-w-sm bg-white border border-slate-200 rounded-3xl p-6 shadow-2xl space-y-4 text-center">
             {/* Header */}
             <div className="flex items-center justify-between pb-2 border-b border-slate-100">
@@ -3924,15 +3977,14 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
             {isReceivingFromPhone ? (
               <div className="flex items-center justify-center gap-2 text-xs font-bold text-[#4338CA] bg-indigo-50 py-2.5 px-3 rounded-xl border border-indigo-200">
                 <Loader2 className="w-4 h-4 animate-spin text-[#4338CA]" />
-                <span>Receiving pages from phone...</span>
+                <span>Receiving snap from phone...</span>
               </div>
             ) : receivedPhoneCount > 0 ? (
               <div className="flex items-center justify-between text-xs font-bold text-[#0D9488] bg-teal-50 py-2 px-3 rounded-xl border border-teal-200">
                 <div className="flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4 text-[#0D9488]" />
                   <span>
-                    {receivedPhoneCount} {receivedPhoneCount === 1 ? 'page' : 'pages'} received from
-                    phone
+                    {receivedPhoneCount} {receivedPhoneCount === 1 ? 'snap' : 'snaps'} received from phone
                   </span>
                 </div>
                 <span className="text-[10px] bg-teal-100 text-teal-800 px-2 py-0.5 rounded-full font-mono">
@@ -3946,8 +3998,52 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-[#0D9488]" />
                 </span>
                 <span className="text-[11px] font-medium text-slate-600">
-                  Waiting for phone to upload...
+                  Waiting for phone to snap and upload...
                 </span>
+              </div>
+            )}
+
+            {/* Live Snaps Miniature Strip with instant discard */}
+            {receivedPhoneCount > 0 && selectedFiles.length > 0 && (
+              <div className="space-y-1.5 text-left bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                <div className="flex items-center justify-between text-[11px] text-slate-600 font-semibold px-0.5">
+                  <span>Queued in laptop ({selectedFiles.length}):</span>
+                  <span className="text-[10px] text-slate-400 font-normal">Tap trash to discard</span>
+                </div>
+                <div className="flex items-center gap-2 overflow-x-auto py-1 max-w-full">
+                  {selectedFiles.map((f, fIdx) => (
+                    <div
+                      key={f.id}
+                      className="relative shrink-0 w-12 h-12 rounded-lg border border-slate-200 overflow-hidden bg-white shadow-2xs group"
+                    >
+                      {f.previewUrl ? (
+                        <img
+                          src={f.previewUrl}
+                          alt={`Snap ${fIdx + 1}`}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-slate-400">
+                          <ImageIcon className="w-4 h-4" />
+                        </div>
+                      )}
+                      <span className="absolute bottom-0 inset-x-0 bg-[#0F172A]/80 text-white font-mono font-bold text-[8px] text-center">
+                        P{fIdx + 1}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          removeSelectedFile(f.id);
+                        }}
+                        className="absolute top-0.5 right-0.5 w-3.5 h-3.5 rounded-full bg-rose-600 text-white flex items-center justify-center hover:bg-rose-700 transition-colors"
+                        title="Discard this snap"
+                      >
+                        <X className="w-2 h-2" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 
@@ -3955,10 +4051,10 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
             <div className="text-[11px] text-slate-500 space-y-1 text-left bg-slate-50/70 p-3 rounded-xl border border-slate-200">
               <p className="font-semibold text-slate-700 text-xs">How it works:</p>
               <ol className="list-decimal list-inside space-y-0.5 text-[11px]">
-                <li>Open your mobile camera and scan the QR code</li>
-                <li>Take photos of Page 1, Page 2, Page 3, etc.</li>
-                <li>Tap <strong>Upload All & Send to Desktop</strong> on your phone</li>
-                <li>Pages queue here in real-time. Click <strong>Done / Close</strong> when finished</li>
+                <li>Scan this QR code with your phone camera</li>
+                <li>Tap <strong>Snap & Upload</strong> for each bill page</li>
+                <li>Photos stream here in real time. Keep snapping!</li>
+                <li>Click <strong>Done / Organize & Extract</strong> below to extract on laptop</li>
               </ol>
             </div>
 
@@ -4006,8 +4102,8 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
               >
                 <span>
                   {receivedPhoneCount > 0
-                    ? `Done / Close (${receivedPhoneCount} ${
-                        receivedPhoneCount === 1 ? 'page' : 'pages'
+                    ? `Done / Organize & Extract (${receivedPhoneCount} ${
+                        receivedPhoneCount === 1 ? 'snap' : 'snaps'
                       } received)`
                     : 'Done / Close'}
                 </span>
