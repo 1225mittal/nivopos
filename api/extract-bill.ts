@@ -113,6 +113,7 @@ Permanent Indian Wholesale & FMCG Terminology Rules:
 - "UPC" = Units Per Case. If both CS (cases) and UPC (units per case) are given, determine the actual total item quantity (Cases * UPC or as billed) and ensure the unit purchase rate aligns consistently.
 - "Pcs", "Pieces", and "Qty" mean the same thing: item quantity.
 - "Rate", "Price", and "Basic Rate" mean the same thing: unit purchase rate before tax.
+- Free / Scheme Quantity: If a bill prints quantity as "X+Y" (such as "108+12"), or has a separate "Free" / "Sch" / "Scheme Qty" column, extract "quantity" as the billed/paid quantity (e.g. 108) and "free_qty" as the free/scheme quantity (e.g. 12, defaulting to 0).
 
 Extract top-level seller details:
 - "seller_name": Issuer / distributor / seller company name (NOT the customer or consignee).
@@ -127,7 +128,8 @@ Extract top-level seller details:
 Extract every product line item in "items":
 - "name": Full brand and product name (e.g. "Fortune Sunlite Refined Sunflower Oil 1L Pouch", "Amul Butter 500g", "Tata Salt 1kg", "Surf Excel Easy Wash 1kg").
 - "hsn_code": 4 to 8 digit HSN/SAC code printed in the invoice row or HSN summary table (e.g. "0405", "1512", "1905", "2106", "3306"). Return "" if not printed.
-- "quantity": Numeric quantity purchased (e.g. 10, 24, 50). Minimum 1.
+- "quantity": Numeric quantity purchased and billed (e.g. 10, 24, 50, 108). Minimum 1. If printed as "X+Y", this is X.
+- "free_qty": Numeric free or scheme quantity (e.g. 12, 0). If printed as "X+Y", this is Y. Default 0.
 - "unit": Unit of measurement (e.g. "pcs", "kg", "pack", "box", "ltr", "gm", "pouch", "bottle", "tin", "cs"). Default "pcs".
 - "mrp": Numeric Maximum Retail Price (MRP) printed on the bill in an MRP column. If NO explicit MRP column or printed MRP exists, return null.
 - "purchase_rate": Unit landing rate / purchase rate before GST (numeric).
@@ -162,6 +164,7 @@ Output schema strictly as valid JSON:
       "name": "...",
       "hsn_code": "...",
       "quantity": 1,
+      "free_qty": 0,
       "unit": "pcs",
       "mrp": null,
       "purchase_rate": 0.0,

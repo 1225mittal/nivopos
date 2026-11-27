@@ -658,6 +658,7 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
       if (!itemsErr && dbItems && dbItems.length > 0) {
         const mappedItems: PurchaseBillItem[] = dbItems.map((row: any) => {
           const qty = Number(row.quantity ?? row.qty) || 1;
+          const freeQty = Number(row.free_qty) || 0;
           const rate = Number(row.purchase_rate ?? row.rate) || 0;
           const disc = Number(row.discount) || 0;
           const gst = Number(row.gst_rate) || 0;
@@ -668,6 +669,8 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
             name: row.item_name || row.name || 'Item',
             item_name: row.item_name || row.name || 'Item',
             qty: qty,
+            quantity: qty,
+            free_qty: freeQty > 0 ? freeQty : '',
             unit: row.unit || 'pcs',
             purchase_price: rate,
             purchase_rate: rate,
@@ -841,6 +844,7 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
         hsn_code: '15121910',
         qty: 24,
         quantity: 24,
+        free_qty: 2,
         unit: 'pack',
         purchase_rate: 118,
         purchase_price: 118,
@@ -1058,6 +1062,7 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
       setItems(
         (data.items || []).map((it: any, idx: number) => {
           const qty = Number(it.quantity ?? it.qty) || 1;
+          const freeQty = Number(it.free_qty) || 0;
           const buyRate = Number(it.purchase_rate ?? it.price_without_tax ?? it.purchase_price) || 0;
           const gstRate = Number(it.gst_rate) || 0;
           const discount = Number(it.discount) || 0;
@@ -1110,6 +1115,7 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
             hsn_code: hsn,
             qty: qty,
             quantity: qty,
+            free_qty: freeQty > 0 ? freeQty : '',
             unit: it.unit || 'pcs',
             purchase_rate: buyRate,
             purchase_price: buyRate,
@@ -1249,6 +1255,9 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
             updated.amount = taxable;
             updated.total_amount = taxable;
           }
+        } else if (field === 'free_qty') {
+          const raw = sanitizeDecimalInput(String(value));
+          updated.free_qty = raw;
         } else if (field === 'price_without_tax' || field === 'purchase_price' || field === 'purchase_rate') {
           const raw = sanitizeDecimalInput(String(value));
           updated.price_without_tax = raw;
@@ -1361,6 +1370,7 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
       hsn_code: '',
       qty: 1,
       quantity: 1,
+      free_qty: '',
       unit: 'pcs',
       purchase_rate: 0,
       purchase_price: 0,
@@ -1420,7 +1430,13 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
 
   const totalTaxAmount = gstBreakdown.reduce((acc, g) => acc + g.tax, 0);
   const totalAmountWithTax = Math.round((totalAmountWithoutTax + totalTaxAmount) * 100) / 100;
-  const totalUnits = items.reduce((acc, i) => acc + (parseFloat(String(i.quantity ?? i.qty ?? 0)) || 0), 0);
+  const totalUnits = items.reduce(
+    (acc, i) =>
+      acc +
+      (parseFloat(String(i.quantity ?? i.qty ?? 0)) || 0) +
+      (parseFloat(String(i.free_qty ?? 0)) || 0),
+    0
+  );
 
   // Commit Items: Check/Insert public.suppliers -> Upsert public.products -> Save public.purchase_bills
   const handleSaveToStoreStock = async () => {
@@ -1679,14 +1695,22 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
 
         const mrpForDb = parsedMrp !== null && parsedMrp > 0 ? parsedMrp : sellPrice;
         const qty = Number(item.quantity ?? item.qty) || 1;
+        const freeQty = Number(item.free_qty) || 0;
+        const totalReceivedUnits = qty + freeQty;
         const gstRate = Number(item.gst_rate) || 0;
+        const disc = Number(item.discount) || 0;
+        const taxable = Math.max(0, qty * buyPrice - disc);
+        const lineTotalIncl = Math.round(taxable * (1 + gstRate / 100) * 100) / 100;
+        const effectiveLandingPrice = totalReceivedUnits > 0
+          ? Math.round((lineTotalIncl / totalReceivedUnits) * 100) / 100
+          : buyPrice;
 
         if (existing) {
-          // Increment stock_qty of existing product
-          const newStock = (Number(existing.stock_qty) || 0) + qty;
+          // Increment stock_qty of existing product (including paid and free quantity)
+          const newStock = (Number(existing.stock_qty) || 0) + totalReceivedUnits;
           const updateData: any = {
             stock_qty: newStock,
-            purchase_price: buyPrice,
+            purchase_price: effectiveLandingPrice,
             gst_rate: gstRate,
             mrp: mrpForDb,
             selling_price: sellPrice,
@@ -1736,9 +1760,9 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
             unit: unit,
             mrp: mrpForDb,
             selling_price: sellPrice,
-            purchase_price: buyPrice,
+            purchase_price: effectiveLandingPrice,
             gst_rate: gstRate,
-            stock_qty: qty,
+            stock_qty: totalReceivedUnits,
             low_stock_alert: 5,
             category: trimmedCategory,
             sub_category: trimmedSubCategory,
@@ -1947,6 +1971,7 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
         if (savedBillId) {
           const billItemRows = items.map((it) => {
             const qty = Number(it.quantity ?? it.qty) || 1;
+            const freeQty = Number(it.free_qty) || 0;
             const rate = Number(it.purchase_rate ?? it.price_without_tax ?? it.purchase_price) || 0;
             const gst = Number(it.gst_rate) || 0;
             const disc = Number(it.discount) || 0;
@@ -1965,6 +1990,7 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
               rate: rate,
               purchase_rate: rate,
               quantity: qty,
+              free_qty: freeQty,
               unit: it.unit || 'pcs',
               gst_rate: gst,
               discount: disc,
@@ -2137,6 +2163,8 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
             price_without_tax: di.rate,
             quantity: di.quantity,
             qty: di.quantity,
+            free_qty: di.free_qty || 0,
+            discount: di.discount || 0,
             gst_rate: di.gst_rate,
             total_amount: di.total,
             amount: di.total,
@@ -2904,6 +2932,8 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
                       : [];
 
                     const qNum = parseFloat(String(item.quantity ?? item.qty ?? 0)) || 0;
+                    const freeQtyNum = parseFloat(String(item.free_qty ?? 0)) || 0;
+                    const totalReceivedUnits = qNum + freeQtyNum;
                     const rNum = parseFloat(String(item.price_without_tax ?? item.purchase_price ?? item.purchase_rate ?? 0)) || 0;
                     const dNum = parseFloat(String(item.discount ?? 0)) || 0;
                     const gstNum = Number(item.gst_rate) || 0;
@@ -2916,10 +2946,13 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
                     const totalExclTax = Math.max(0, Math.round((grossCalc - dNum) * 100) / 100);
                     const totalInclTax = Math.round(totalExclTax * (1 + gstNum / 100) * 100) / 100;
 
-                    const netUnitInclTax = qNum > 0 ? totalInclTax / qNum : buyInclTaxNum;
+                    const effectiveUnitInclTax = totalReceivedUnits > 0
+                      ? Math.round((totalInclTax / totalReceivedUnits) * 100) / 100
+                      : (qNum > 0 ? Math.round((totalInclTax / qNum) * 100) / 100 : buyInclTaxNum);
+
                     const marginPct =
                       mrpNum > 0
-                        ? Math.round((((mrpNum - netUnitInclTax) / mrpNum) * 100) * 10) / 10
+                        ? Math.round((((mrpNum - effectiveUnitInclTax) / mrpNum) * 100) * 10) / 10
                         : null;
 
                     const rawBillTotal =
@@ -3086,7 +3119,7 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
                         </div>
 
                         {/* Row 3: Pricing, GST & Auto-Sync Commercials */}
-                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 2xl:grid-cols-10 gap-2 items-end pt-1 border-t border-slate-100 font-mono">
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-11 gap-2 items-end pt-1 border-t border-slate-100 font-mono">
                           {/* Qty */}
                           <div>
                             <label className="block text-[9px] font-bold uppercase font-sans text-slate-400 mb-0.5">
@@ -3105,6 +3138,28 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
                               }
                               placeholder=""
                               className="w-full text-center bg-slate-50 border border-slate-200 rounded-lg py-1 text-xs text-slate-900 font-bold focus:bg-white focus:outline-none focus:border-[#4338CA]"
+                            />
+                          </div>
+
+                          {/* Free Qty */}
+                          <div>
+                            <label className="block text-[9px] font-bold uppercase font-sans text-slate-400 mb-0.5">
+                              Free Qty
+                            </label>
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              value={
+                                item.free_qty !== undefined && item.free_qty !== null
+                                  ? item.free_qty
+                                  : ''
+                              }
+                              onChange={(e) =>
+                                updateItem(item.id || '', 'free_qty', e.target.value)
+                              }
+                              placeholder="0"
+                              title={freeQtyNum > 0 ? `Free Scheme Quantity: +${freeQtyNum} free units` : 'Free Scheme Quantity (e.g. 108+12)'}
+                              className="w-full text-center bg-slate-50 border border-slate-200 rounded-lg py-1 text-xs text-[#0D9488] font-bold focus:bg-white focus:outline-none focus:border-[#0D9488]"
                             />
                           </div>
 
@@ -3206,14 +3261,17 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
                               type="text"
                               inputMode="decimal"
                               value={
-                                item.price_after_tax !== undefined && item.price_after_tax !== null
-                                  ? item.price_after_tax
-                                  : ''
+                                freeQtyNum > 0 && effectiveUnitInclTax > 0
+                                  ? String(effectiveUnitInclTax)
+                                  : (item.price_after_tax !== undefined && item.price_after_tax !== null && item.price_after_tax !== ''
+                                      ? item.price_after_tax
+                                      : (effectiveUnitInclTax > 0 ? String(effectiveUnitInclTax) : ''))
                               }
                               onChange={(e) =>
                                 updateItem(item.id || '', 'price_after_tax', e.target.value)
                               }
                               placeholder=""
+                              title={freeQtyNum > 0 ? `Effective Landing Cost: ₹${effectiveUnitInclTax} (factoring in ${freeQtyNum} free units)` : 'Buy Rate Incl. Tax'}
                               className="w-full text-right bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs text-[#0D9488] font-bold focus:bg-white focus:outline-none focus:border-[#0D9488]"
                             />
                           </div>
@@ -3291,7 +3349,7 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
                               }`}
                               title={
                                 marginPct !== null
-                                  ? `Margin: ${marginPct}% (Net Landing Cost: ₹${netUnitInclTax.toFixed(2)}, MRP: ₹${mrpNum.toFixed(2)})`
+                                  ? `Margin: ${marginPct}% (Net Landing Cost: ₹${effectiveUnitInclTax.toFixed(2)}, MRP: ₹${mrpNum.toFixed(2)})`
                                   : 'Enter MRP to calculate margin %'
                               }
                             />
@@ -4136,7 +4194,11 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
         }, 0) || Number(detailsModalBill.total_gst ?? (detailsModalBill as any).tax_amount ?? 0);
 
         const grandTotal = Number(detailsModalBill.grand_total ?? (detailsModalBill as any).total_amount ?? (totalTaxable + totalTax));
-        const totalUnits = lineItems.reduce((acc: number, it: any) => acc + Number(it.quantity ?? it.qty ?? 1), 0);
+        const totalUnits = lineItems.reduce((acc: number, it: any) => {
+          const q = Number(it.quantity ?? it.qty ?? 0);
+          const fq = Number(it.free_qty ?? 0);
+          return acc + q + fq;
+        }, 0) || Number(detailsModalBill.total_units || 0);
 
         const activeDoc = modalResolvedUrls[activeViewerDocIndex] || null;
 
@@ -4395,6 +4457,8 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
                       <tbody className="divide-y divide-slate-100">
                         {lineItems.map((item: any, idx: number) => {
                           const qty = Number(item.quantity ?? item.qty ?? 1);
+                          const freeQty = Number(item.free_qty ?? 0);
+                          const totalItemUnits = qty + freeQty;
                           const unit = (item.unit || 'PCS').toUpperCase();
                           const mrp = Number(item.mrp ?? item.selling_price ?? 0);
                           const rate = Number(item.purchase_rate ?? item.rate ?? item.purchase_price ?? item.price_without_tax ?? 0);
@@ -4403,7 +4467,7 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
                           const gstRate = Number(item.gst_rate ?? 0);
                           const taxAmount = taxable * (gstRate / 100);
                           const lineTotal = Number(item.total ?? item.amount ?? item.total_amount ?? (taxable + taxAmount));
-                          const landingCostPerUnit = qty > 0 ? (lineTotal / qty) : rate;
+                          const landingCostPerUnit = totalItemUnits > 0 ? (lineTotal / totalItemUnits) : rate;
                           const marginRs = mrp > 0 ? mrp - landingCostPerUnit : 0;
                           const marginPct = mrp > 0 ? (marginRs / mrp) * 100 : 0;
 
@@ -4440,7 +4504,12 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
 
                               {/* QTY */}
                               <td className="py-2 px-2 text-center font-mono font-bold text-slate-800">
-                                {qty}
+                                <span>{qty}</span>
+                                {freeQty > 0 && (
+                                  <span className="ml-1 text-[10px] text-[#0D9488] font-bold bg-teal-50 px-1 py-0.5 rounded border border-teal-200">
+                                    +{freeQty} free
+                                  </span>
+                                )}
                               </td>
 
                               {/* UNIT */}
