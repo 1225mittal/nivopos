@@ -19,6 +19,8 @@ export interface ThermalReceiptInvoiceInput {
   payment_mode?: string;
   customer_name?: string | null;
   customer_phone?: string | null;
+  customer_gstin?: string | null;
+  customer_address?: string | null;
   discount_amount?: number | string;
   grand_total?: number | string;
   subtotal?: number | string;
@@ -140,6 +142,8 @@ export const ThermalReceipt: React.FC<ThermalReceiptProps> = ({
 
   const customerName = invoice.customer_name?.trim() || '';
   const customerPhone = invoice.customer_phone?.trim() || '';
+  const customerGstin = invoice.customer_gstin?.trim() || '';
+  const customerAddress = invoice.customer_address?.trim() || '';
   const hasCustomer =
     customerName &&
     customerName.toLowerCase() !== 'counter customer' &&
@@ -267,7 +271,7 @@ export const ThermalReceipt: React.FC<ThermalReceiptProps> = ({
           <span>RCM:</span>
           <span>No</span>
         </div>
-        {hasCustomer && (
+        {hasCustomer && !customerGstin && (
           <div className="flex justify-between items-baseline">
             <span>Customer:</span>
             <span className="font-bold text-right truncate max-w-[150px]">
@@ -277,6 +281,37 @@ export const ThermalReceipt: React.FC<ThermalReceiptProps> = ({
           </div>
         )}
       </div>
+
+      {/* Buyer Details (B2B Tax Invoice block per GST Rule 46) */}
+      {customerGstin && (
+        <div className="text-[10px] space-y-0.5 py-1.5 border-b border-dashed border-black">
+          <div className="font-bold text-[9px] uppercase tracking-wider text-black">
+            -- BUYER DETAILS (B2B) --
+          </div>
+          {customerName && (
+            <div className="flex justify-between items-baseline">
+              <span>Name:</span>
+              <span className="font-bold text-right truncate max-w-[170px]">{customerName}</span>
+            </div>
+          )}
+          <div className="flex justify-between items-baseline">
+            <span>GSTIN:</span>
+            <span className="font-bold text-right tracking-wide">{customerGstin}</span>
+          </div>
+          {customerAddress && (
+            <div className="flex justify-between items-baseline">
+              <span>Address:</span>
+              <span className="text-right truncate max-w-[170px]">{customerAddress}</span>
+            </div>
+          )}
+          {customerPhone && (
+            <div className="flex justify-between items-baseline">
+              <span>Phone:</span>
+              <span className="text-right">{customerPhone}</span>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* 3. Items Section */}
       <div className="py-1.5 border-b border-dashed border-black space-y-1.5">

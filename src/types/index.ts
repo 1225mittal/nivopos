@@ -87,6 +87,8 @@ export interface Invoice {
   invoice_number: string;
   customer_name?: string;
   customer_phone?: string;
+  customer_gstin?: string;
+  customer_address?: string;
   payment_mode: 'UPI QR' | 'Cash' | 'Card' | 'Udhar Khata' | string;
   subtotal: number;
   total_gst: number;

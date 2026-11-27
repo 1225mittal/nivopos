@@ -24,11 +24,31 @@ import {
   Copy,
   Check,
   Percent,
+  Building2,
+  MapPin,
+  PauseCircle,
 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { supabase } from '../lib/supabase';
 import { Product, StoreProfile, Invoice, InvoiceItem } from '../types';
 import { ThermalReceipt } from '../components/ThermalReceipt';
+
+export interface HeldBill {
+  id: string;
+  timestamp: string;
+  createdAtFormatted: string;
+  customerName: string;
+  customerPhone: string;
+  customerGstin: string;
+  customerAddress: string;
+  cart: CartItem[];
+  discountInput: number | '';
+  taxMode: 'inclusive' | 'exclusive';
+  paymentMode: 'UPI QR' | 'Cash' | 'Card' | 'Udhar Khata';
+  itemCount: number;
+  totalQty: number;
+  totalAmount: number;
+}
 
 interface CartItem {
   cart_id: string;
@@ -103,7 +123,29 @@ export const PosBilling: React.FC<PosBillingProps> = ({
   const [discountInput, setDiscountInput] = useState<number | ''>('');
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
+  const [customerGstin, setCustomerGstin] = useState('');
+  const [customerAddress, setCustomerAddress] = useState('');
+  const [showGstFields, setShowGstFields] = useState(false);
+  const [isSearchingGstin, setIsSearchingGstin] = useState(false);
   const [paymentMode, setPaymentMode] = useState<'UPI QR' | 'Cash' | 'Card' | 'Udhar Khata'>('UPI QR');
+
+  // Held / Parked Bills State (persisted to localStorage)
+  const [heldBills, setHeldBills] = useState<HeldBill[]>(() => {
+    try {
+      const raw = localStorage.getItem('nivopos_held_bills');
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('nivopos_held_bills', JSON.stringify(heldBills));
+    } catch (err) {
+      console.warn('[PosBilling] Error saving held bills to localStorage:', err);
+    }
+  }, [heldBills]);
 
   // Barcode / Search Input State
   const [searchInput, setSearchInput] = useState('');
@@ -190,6 +232,9 @@ export const PosBilling: React.FC<PosBillingProps> = ({
       setDiscountInput('');
       setCustomerName('');
       setCustomerPhone('');
+      setCustomerGstin('');
+      setCustomerAddress('');
+      setShowGstFields(false);
     }
   }, [cart.length]);
 
@@ -347,6 +392,155 @@ export const PosBilling: React.FC<PosBillingProps> = ({
     setTimeout(() => setCopiedUpi(false), 2000);
   };
 
+  // Auto-fill repeat buyer details when 15-char GSTIN is entered
+  const handleGstinChange = async (val: string) => {
+    const cleanGstin = val.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 15);
+    setCustomerGstin(cleanGstin);
+
+    if (cleanGstin.length === 15 && currentUser?.id) {
+      try {
+        setIsSearchingGstin(true);
+        const { data, error } = await supabase
+          .from('invoices')
+          .select('customer_name, customer_phone, customer_address')
+          .eq('store_id', currentUser.id)
+          .eq('customer_gstin', cleanGstin)
+          .order('created_at', { ascending: false })
+          .limit(1);
+
+        if (!error && data && data.length > 0) {
+          const prev = data[0];
+          if (prev.customer_name && (!customerName || customerName === 'Counter Customer')) {
+            setCustomerName(prev.customer_name);
+          }
+          if (prev.customer_phone && !customerPhone) {
+            setCustomerPhone(prev.customer_phone);
+          }
+          if (prev.customer_address && !customerAddress) {
+            setCustomerAddress(prev.customer_address);
+          }
+          setFeedback({
+            type: 'success',
+            message: `Auto-filled details for repeat B2B buyer: ${prev.customer_name || cleanGstin}`,
+          });
+        }
+      } catch (err: any) {
+        console.warn('[PosBilling] GSTIN repeat-buyer lookup note:', err?.message);
+      } finally {
+        setIsSearchingGstin(false);
+      }
+    }
+  };
+
+  // Hold / Park Current Bill
+  const handleHoldCurrentBill = () => {
+    if (cart.length === 0) {
+      setFeedback({ type: 'error', message: 'Cannot hold an empty bill. Add items first.' });
+      return;
+    }
+
+    const now = new Date();
+    const timeFormatted = now.toLocaleTimeString('en-IN', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true,
+    });
+    const custLabel = customerName.trim() || customerPhone.trim() || 'Walk-in';
+
+    const newHeldBill: HeldBill = {
+      id: `HOLD-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      timestamp: now.toISOString(),
+      createdAtFormatted: timeFormatted,
+      customerName: customerName.trim(),
+      customerPhone: customerPhone.trim(),
+      customerGstin: customerGstin.trim(),
+      customerAddress: customerAddress.trim(),
+      cart: [...cart],
+      discountInput: discountInput,
+      taxMode: taxMode,
+      paymentMode: paymentMode,
+      itemCount: cart.length,
+      totalQty: cart.reduce((a, b) => a + b.qty, 0),
+      totalAmount: grandTotal,
+    };
+
+    setHeldBills((prev) => [newHeldBill, ...prev]);
+
+    // Clear active bill screen for next customer
+    setCart([]);
+    setDiscountInput('');
+    setCustomerName('');
+    setCustomerPhone('');
+    setCustomerGstin('');
+    setCustomerAddress('');
+    setShowGstFields(false);
+
+    setFeedback({
+      type: 'success',
+      message: `Bill for "${custLabel}" (₹${grandTotal}) held. Ready for next customer!`,
+    });
+  };
+
+  // Resume / Restore a Held Bill
+  const handleResumeHeldBill = (billId: string) => {
+    const target = heldBills.find((b) => b.id === billId);
+    if (!target) return;
+
+    let updatedHeld = heldBills.filter((b) => b.id !== billId);
+
+    // If current active cart has items, automatically park current cart first so nothing is lost!
+    if (cart.length > 0) {
+      const now = new Date();
+      const timeFormatted = now.toLocaleTimeString('en-IN', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: true,
+      });
+      const autoHeldBill: HeldBill = {
+        id: `HOLD-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        timestamp: now.toISOString(),
+        createdAtFormatted: timeFormatted,
+        customerName: customerName.trim(),
+        customerPhone: customerPhone.trim(),
+        customerGstin: customerGstin.trim(),
+        customerAddress: customerAddress.trim(),
+        cart: [...cart],
+        discountInput: discountInput,
+        taxMode: taxMode,
+        paymentMode: paymentMode,
+        itemCount: cart.length,
+        totalQty: cart.reduce((a, b) => a + b.qty, 0),
+        totalAmount: grandTotal,
+      };
+      updatedHeld = [autoHeldBill, ...updatedHeld];
+    }
+
+    setHeldBills(updatedHeld);
+
+    // Restore the selected bill
+    setCart(target.cart);
+    setDiscountInput(target.discountInput);
+    setTaxMode(target.taxMode);
+    setPaymentMode(target.paymentMode || 'Cash');
+    setCustomerName(target.customerName || '');
+    setCustomerPhone(target.customerPhone || '');
+    setCustomerGstin(target.customerGstin || '');
+    setCustomerAddress(target.customerAddress || '');
+    setShowGstFields(Boolean(target.customerGstin || target.customerAddress));
+
+    const custLabel = target.customerName || target.customerPhone || 'Walk-in';
+    setFeedback({
+      type: 'success',
+      message: `Resumed bill for "${custLabel}" (${target.cart.length} items, ₹${target.totalAmount}).`,
+    });
+  };
+
+  // Delete a Held Bill
+  const handleDeleteHeldBill = (billId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setHeldBills((prev) => prev.filter((b) => b.id !== billId));
+  };
+
   // Generate & Save Bill to database + Deduct Stock
   const handleGenerateAndSaveBill = async () => {
     if (cart.length === 0) {
@@ -362,11 +556,13 @@ export const PosBilling: React.FC<PosBillingProps> = ({
       const now = new Date().toISOString();
 
       // 1. Insert into public.invoices
-      const invoicePayload = {
+      const invoicePayload: any = {
         store_id: currentUser.id,
         invoice_number: invoiceNumber,
         customer_name: customerName.trim() || 'Counter Customer',
         customer_phone: customerPhone.trim() || null,
+        customer_gstin: customerGstin.trim() || null,
+        customer_address: customerAddress.trim() || null,
         payment_mode: paymentMode,
         subtotal: taxMode === 'inclusive' ? rawSubtotal : taxableSubtotal,
         total_gst: totalGst,
@@ -376,11 +572,23 @@ export const PosBilling: React.FC<PosBillingProps> = ({
         created_at: now,
       };
 
-      const { data: invoiceData, error: invoiceErr } = await supabase
+      let { data: invoiceData, error: invoiceErr } = await supabase
         .from('invoices')
         .insert(invoicePayload)
         .select('*')
         .single();
+
+      if (invoiceErr && (invoiceErr.message?.includes('customer_gstin') || invoiceErr.message?.includes('customer_address'))) {
+        delete invoicePayload.customer_gstin;
+        delete invoicePayload.customer_address;
+        const retryRes = await supabase
+          .from('invoices')
+          .insert(invoicePayload)
+          .select('*')
+          .single();
+        invoiceData = retryRes.data;
+        invoiceErr = retryRes.error;
+      }
 
       if (invoiceErr) throw invoiceErr;
 
@@ -432,7 +640,12 @@ export const PosBilling: React.FC<PosBillingProps> = ({
       );
 
       // Set completed invoice for receipt modal
-      setCompletedInvoice(invoiceData);
+      const finalInvoiceObj: Invoice = {
+        ...(invoiceData || invoicePayload),
+        customer_gstin: customerGstin.trim() || undefined,
+        customer_address: customerAddress.trim() || undefined,
+      };
+      setCompletedInvoice(finalInvoiceObj);
       setCompletedItems([...cart]);
       setModalPhone(customerPhone.trim());
       setReceiptModalOpen(true);
@@ -441,7 +654,7 @@ export const PosBilling: React.FC<PosBillingProps> = ({
       if (dispatchPref === 'print') {
         setTimeout(() => window.print(), 350);
       } else if (dispatchPref === 'whatsapp' && customerPhone.trim()) {
-        setTimeout(() => handleShareWhatsApp(customerPhone.trim(), invoiceData, cart), 350);
+        setTimeout(() => handleShareWhatsApp(customerPhone.trim(), finalInvoiceObj, cart), 350);
       }
 
       // Reset active bill cart
@@ -449,6 +662,9 @@ export const PosBilling: React.FC<PosBillingProps> = ({
       setDiscountInput('');
       setCustomerName('');
       setCustomerPhone('');
+      setCustomerGstin('');
+      setCustomerAddress('');
+      setShowGstFields(false);
     } catch (err: any) {
       console.error('[PosBilling] Error saving bill:', err);
       setFeedback({ type: 'error', message: err.message || 'Error saving invoice.' });
@@ -456,6 +672,45 @@ export const PosBilling: React.FC<PosBillingProps> = ({
       setIsProcessing(false);
     }
   };
+
+  // Keyboard Shortcuts: Enter outside inputs, or Ctrl+Enter anywhere to generate bill
+  const handleSaveBillRef = useRef(handleGenerateAndSaveBill);
+  handleSaveBillRef.current = handleGenerateAndSaveBill;
+
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: KeyboardEvent) => {
+      // Ignore if receipt modal or custom item modal is open, or processing, or cart is empty
+      if (receiptModalOpen || customItemModal || isProcessing || cart.length === 0) {
+        return;
+      }
+
+      // 1. Ctrl + Enter from anywhere on the page (even inside inputs)
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        e.preventDefault();
+        handleSaveBillRef.current();
+        return;
+      }
+
+      // 2. Plain Enter key outside inputs/textarea/select/modal
+      if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+        const activeElem = document.activeElement as HTMLElement | null;
+        const tag = (activeElem?.tagName || '').toLowerCase();
+        const isTextInput =
+          tag === 'input' ||
+          tag === 'textarea' ||
+          tag === 'select' ||
+          activeElem?.isContentEditable;
+
+        if (!isTextInput) {
+          e.preventDefault();
+          handleSaveBillRef.current();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [receiptModalOpen, customItemModal, isProcessing, cart.length]);
 
   // WhatsApp formatted receipt text generator
   const getWhatsAppMessage = (inv?: Invoice, itms?: CartItem[]) => {
@@ -472,6 +727,8 @@ export const PosBilling: React.FC<PosBillingProps> = ({
       `Bill #: ${currentInv.invoice_number}\n` +
       `Date: ${new Date(currentInv.created_at).toLocaleString('en-IN')}\n` +
       `Customer: ${currentInv.customer_name}\n` +
+      (currentInv.customer_gstin ? `Buyer GSTIN: ${currentInv.customer_gstin}\n` : '') +
+      (currentInv.customer_address ? `Buyer Address: ${currentInv.customer_address}\n` : '') +
       `--------------------------------\n` +
       `${itemsList}\n` +
       `--------------------------------\n` +
@@ -525,6 +782,44 @@ export const PosBilling: React.FC<PosBillingProps> = ({
             <AlertCircle className="w-4 h-4 shrink-0" />
           )}
           <span>{feedback.message}</span>
+        </div>
+      )}
+
+      {/* Held / Parked Bills Bar */}
+      {heldBills.length > 0 && (
+        <div className="flex items-center gap-2 overflow-x-auto py-2.5 px-3.5 bg-amber-50/80 border border-amber-200 rounded-2xl text-xs">
+          <div className="flex items-center gap-1.5 font-bold text-nivo-amber shrink-0">
+            <PauseCircle className="w-4 h-4 text-nivo-amber" />
+            <span>Held Bills ({heldBills.length}):</span>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            {heldBills.map((hb) => (
+              <div
+                key={hb.id}
+                onClick={() => handleResumeHeldBill(hb.id)}
+                className="group flex items-center gap-2 px-3 py-1 rounded-xl bg-white border border-amber-200 hover:border-nivo-indigo hover:shadow-xs cursor-pointer transition-all text-xs"
+                title={`Click to resume bill (${hb.itemCount} items, ₹${hb.totalAmount})`}
+              >
+                <span className="font-semibold text-nivo-ink">
+                  {hb.customerName || hb.customerPhone || 'Walk-in'}
+                </span>
+                <span className="text-[10px] font-mono text-slate-500">
+                  ₹{hb.totalAmount} ({hb.itemCount} itm)
+                </span>
+                <span className="text-[10px] text-slate-400 font-mono">
+                  {hb.createdAtFormatted}
+                </span>
+                <button
+                  type="button"
+                  onClick={(e) => handleDeleteHeldBill(hb.id, e)}
+                  className="p-0.5 rounded-full text-slate-400 hover:text-nivo-rose hover:bg-rose-50 transition-colors ml-0.5"
+                  title="Delete this held bill"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
@@ -717,18 +1012,29 @@ export const PosBilling: React.FC<PosBillingProps> = ({
             )}
           </div>
 
-          {/* Quick Clear & Active Items Count */}
+          {/* Quick Clear, Hold Bill & Active Items Count */}
           {cart.length > 0 && (
             <div className="flex items-center justify-between text-xs text-slate-500 px-1">
               <span>
                 {cart.reduce((a, b) => a + b.qty, 0)} units across {cart.length} line items ({taxMode === 'inclusive' ? 'Tax Inclusive' : 'Tax Exclusive'})
               </span>
-              <button
-                onClick={handleClearCart}
-                className="text-rose-600 hover:underline flex items-center gap-1 font-medium"
-              >
-                <RotateCcw className="w-3 h-3" /> Clear Active Bill
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={handleHoldCurrentBill}
+                  className="text-[#4338CA] hover:text-[#3730A3] flex items-center gap-1 font-bold transition-colors"
+                  title="Hold / park current bill and bill next customer"
+                >
+                  <PauseCircle className="w-3.5 h-3.5" /> Hold Bill
+                </button>
+                <button
+                  type="button"
+                  onClick={handleClearCart}
+                  className="text-rose-600 hover:underline flex items-center gap-1 font-medium"
+                >
+                  <RotateCcw className="w-3 h-3" /> Clear Active Bill
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -736,11 +1042,20 @@ export const PosBilling: React.FC<PosBillingProps> = ({
         {/* ================= RIGHT 5 COLS: CUSTOMER, TOTALS & PAYMENT ================= */}
         <div className="lg:col-span-5 space-y-4">
           <div className="p-6 rounded-2xl bg-white border border-slate-200 shadow-sm space-y-5">
-            {/* Customer Inputs */}
+            {/* Customer Inputs & B2B GST Details */}
             <div className="space-y-3 pb-4 border-b border-slate-200">
-              <span className="text-[10px] uppercase font-semibold text-slate-500 tracking-wider">
-                Customer Details (Optional)
-              </span>
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] uppercase font-semibold text-slate-500 tracking-wider">
+                  Customer Details (Optional)
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowGstFields((prev) => !prev)}
+                  className="text-[11px] font-bold text-nivo-indigo hover:text-nivo-indigoHover flex items-center gap-1 transition-colors"
+                >
+                  {showGstFields ? '− Hide GST Details' : '+ Add GST Bill Details'}
+                </button>
+              </div>
               <div className="grid grid-cols-2 gap-2">
                 <div className="relative">
                   <User className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
@@ -765,6 +1080,37 @@ export const PosBilling: React.FC<PosBillingProps> = ({
                   />
                 </div>
               </div>
+
+              {/* B2B GST Customer Details Toggle */}
+              {showGstFields && (
+                <div className="space-y-2 pt-2 border-t border-slate-100 animate-in fade-in duration-150">
+                  <div className="relative">
+                    <Building2 className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+                    <input
+                      type="text"
+                      maxLength={15}
+                      value={customerGstin}
+                      onChange={(e) => handleGstinChange(e.target.value)}
+                      placeholder="Customer GSTIN (15-digit uppercase)"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-8 py-2 text-xs text-slate-900 font-mono uppercase placeholder:normal-case placeholder-slate-400 focus:outline-none focus:border-[#4338CA] focus:bg-white"
+                    />
+                    {isSearchingGstin && (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-[#4338CA] absolute right-3 top-2.5" />
+                    )}
+                  </div>
+
+                  <div className="relative">
+                    <MapPin className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+                    <input
+                      type="text"
+                      value={customerAddress}
+                      onChange={(e) => setCustomerAddress(e.target.value)}
+                      placeholder="Billing Address (e.g. Shop 4, Market Yard, City)"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-2 py-2 text-xs text-slate-900 placeholder-slate-400 focus:outline-none focus:border-[#4338CA] focus:bg-white"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Calculations Breakdown */}
@@ -951,6 +1297,9 @@ export const PosBilling: React.FC<PosBillingProps> = ({
                 <>
                   <Receipt className="w-4 h-4" />
                   <span>Generate & Save Bill (₹{grandTotal})</span>
+                  <span className="ml-1 text-[10px] font-mono font-medium opacity-80 bg-white/20 px-1.5 py-0.5 rounded tracking-normal lowercase">
+                    (Enter)
+                  </span>
                 </>
               )}
             </button>

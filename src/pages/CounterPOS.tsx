@@ -1,6 +1,8 @@
 import React from 'react';
-import { PosBilling } from './PosBilling';
+import { PosBilling, HeldBill } from './PosBilling';
 import { StoreProfile } from '../types';
+
+export type { HeldBill };
 
 export interface CounterPOSProps {
   currentUser: any;
