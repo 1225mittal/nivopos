@@ -24,6 +24,7 @@ import {
 import { supabase } from '../lib/supabase';
 import { Invoice, InvoiceItem, StoreProfile } from '../types';
 import { uploadToR2 } from '../lib/r2Upload';
+import { ThermalReceipt } from '../components/ThermalReceipt';
 
 interface SalesHistoryProps {
   currentUser: any;
@@ -510,101 +511,22 @@ export const SalesHistory: React.FC<SalesHistoryProps> = ({
               </button>
             </div>
 
-            {/* Real Printable Receipt Body */}
-            <div id="printable-receipt" className="text-left font-mono text-xs space-y-3 bg-white p-2">
-              <div className="text-center pb-2 border-b border-dashed border-slate-400">
-                <h2 className="text-base font-black tracking-tight uppercase text-black font-sans">
-                  {businessName}
-                </h2>
-                {userProfile?.store_address && (
-                  <p className="text-[10px] text-slate-700 mt-0.5">{userProfile.store_address}</p>
-                )}
-                {userProfile?.city && (
-                  <p className="text-[10px] text-slate-700">{userProfile.city}</p>
-                )}
-                {userProfile?.gstin && (
-                  <p className="text-[10px] font-bold text-black mt-0.5">GSTIN: {userProfile.gstin}</p>
-                )}
-              </div>
-
-              <div className="text-[11px] space-y-1 pb-2 border-b border-dashed border-slate-400">
-                <div className="flex justify-between">
-                  <span>Invoice #:</span>
-                  <span className="font-bold">{selectedInvoice.invoice_number}</span>
+            {/* Real Printable Receipt Body (58mm Thermal GST Rule 46 Compliant) */}
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 max-h-[60vh] overflow-y-auto">
+              {loadingItems ? (
+                <div className="py-8 text-center text-xs text-slate-500 flex flex-col items-center gap-2">
+                  <Loader2 className="w-5 h-5 animate-spin text-[#4338CA]" />
+                  <span>Loading invoice line items...</span>
                 </div>
-                <div className="flex justify-between">
-                  <span>Date/Time:</span>
-                  <span>{new Date(selectedInvoice.created_at).toLocaleString('en-IN')}</span>
+              ) : (
+                <div className="w-full max-w-[280px] mx-auto bg-white p-3 rounded-xl shadow-xs border border-slate-200">
+                  <ThermalReceipt
+                    storeProfile={userProfile}
+                    invoice={selectedInvoice}
+                    items={invoiceItems}
+                  />
                 </div>
-                <div className="flex justify-between">
-                  <span>Payment Mode:</span>
-                  <span className="font-bold">{selectedInvoice.payment_mode}</span>
-                </div>
-                {selectedInvoice.customer_name && (
-                  <div className="flex justify-between">
-                    <span>Customer:</span>
-                    <span>{selectedInvoice.customer_name}</span>
-                  </div>
-                )}
-                <div className="flex justify-between">
-                  <span>Status:</span>
-                  <span className="font-bold uppercase">{selectedInvoice.status}</span>
-                </div>
-              </div>
-
-              {/* Items List */}
-              <div className="space-y-1.5 pb-2 border-b border-dashed border-slate-400">
-                <div className="flex justify-between text-[10px] font-bold uppercase text-slate-600">
-                  <span>Item</span>
-                  <span>Total</span>
-                </div>
-                {loadingItems ? (
-                  <div className="py-4 text-center text-slate-500">Loading line items...</div>
-                ) : invoiceItems.length === 0 ? (
-                  <div className="py-2 text-slate-500 text-center">Standard bill items</div>
-                ) : (
-                  invoiceItems.map((item, idx) => (
-                    <div key={idx} className="flex justify-between items-baseline text-[11px]">
-                      <div className="pr-2">
-                        <p className="font-medium text-black">{item.product_name}</p>
-                        <p className="text-[9px] text-slate-600">
-                          {item.qty} units x ₹{Number(item.unit_price).toFixed(2)} (GST {item.gst_rate}%)
-                        </p>
-                      </div>
-                      <span className="font-bold text-black shrink-0">
-                        ₹{Number(item.line_total).toFixed(2)}
-                      </span>
-                    </div>
-                  ))
-                )}
-              </div>
-
-              {/* Totals */}
-              <div className="space-y-1 pt-1 text-[11px]">
-                <div className="flex justify-between">
-                  <span>Subtotal:</span>
-                  <span>₹{Number(selectedInvoice.subtotal).toFixed(2)}</span>
-                </div>
-                {selectedInvoice.discount_amount > 0 && (
-                  <div className="flex justify-between text-[#0D9488]">
-                    <span>Discount:</span>
-                    <span>-₹{Number(selectedInvoice.discount_amount).toFixed(2)}</span>
-                  </div>
-                )}
-                <div className="flex justify-between text-slate-700">
-                  <span>Total GST:</span>
-                  <span>₹{Number(selectedInvoice.total_gst).toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between text-sm font-black pt-1 border-t border-black text-black">
-                  <span>GRAND TOTAL:</span>
-                  <span>₹{Number(selectedInvoice.grand_total).toLocaleString('en-IN')}</span>
-                </div>
-              </div>
-
-              <div className="text-center pt-3 text-[10px] text-slate-600 space-y-0.5">
-                <p>Thank you for shopping with us!</p>
-                <p className="font-sans text-[9px] text-slate-400">Powered by nivopos.in</p>
-              </div>
+              )}
             </div>
 
             {/* Action Buttons (Hidden during print) */}
@@ -702,6 +624,16 @@ export const SalesHistory: React.FC<SalesHistoryProps> = ({
           </div>
         </div>
       )}
+      {/* Dedicated 58mm Thermal Receipt Print Area (Printed when window.print() is called) */}
+      <div id="thermal-receipt-print-area" className="hidden print:block">
+        {selectedInvoice && (
+          <ThermalReceipt
+            storeProfile={userProfile}
+            invoice={selectedInvoice}
+            items={invoiceItems}
+          />
+        )}
+      </div>
     </div>
   );
 };

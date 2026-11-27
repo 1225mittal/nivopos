@@ -28,6 +28,7 @@ import {
 import { QRCodeSVG } from 'qrcode.react';
 import { supabase } from '../lib/supabase';
 import { Product, StoreProfile, Invoice, InvoiceItem } from '../types';
+import { ThermalReceipt } from '../components/ThermalReceipt';
 
 interface CartItem {
   cart_id: string;
@@ -1076,96 +1077,14 @@ export const PosBilling: React.FC<PosBillingProps> = ({
               </button>
             </div>
 
-            {/* Real Printable Receipt Paper Body */}
-            <div id="printable-receipt" className="text-left font-mono text-xs space-y-3 bg-white p-2">
-              {/* Store Header */}
-              <div className="text-center pb-2 border-b border-dashed border-slate-400">
-                <h2 className="text-base font-black tracking-tight uppercase text-black font-sans">
-                  {businessName}
-                </h2>
-                {userProfile?.store_address && (
-                  <p className="text-[10px] text-slate-700 mt-0.5">{userProfile.store_address}</p>
-                )}
-                {userProfile?.city && (
-                  <p className="text-[10px] text-slate-700">{userProfile.city}</p>
-                )}
-                {userProfile?.gstin && (
-                  <p className="text-[10px] font-bold text-black mt-0.5">GSTIN: {userProfile.gstin}</p>
-                )}
-                {userProfile?.phone && (
-                  <p className="text-[10px] text-slate-700">Ph: {userProfile.phone}</p>
-                )}
-              </div>
-
-              {/* Invoice Meta */}
-              <div className="text-[11px] space-y-1 pb-2 border-b border-dashed border-slate-400">
-                <div className="flex justify-between">
-                  <span>Invoice #:</span>
-                  <span className="font-bold">{completedInvoice.invoice_number}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Date/Time:</span>
-                  <span>{new Date(completedInvoice.created_at).toLocaleString('en-IN')}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Payment Mode:</span>
-                  <span className="font-bold">{completedInvoice.payment_mode}</span>
-                </div>
-                {completedInvoice.customer_name && completedInvoice.customer_name !== 'Counter Customer' && (
-                  <div className="flex justify-between">
-                    <span>Customer:</span>
-                    <span>{completedInvoice.customer_name}</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Items List */}
-              <div className="space-y-1.5 pb-2 border-b border-dashed border-slate-400">
-                <div className="flex justify-between text-[10px] font-bold uppercase text-slate-600">
-                  <span>Item</span>
-                  <span>Total</span>
-                </div>
-                {completedItems.map((item, idx) => (
-                  <div key={idx} className="flex justify-between items-baseline text-[11px]">
-                    <div className="pr-2">
-                      <p className="font-medium text-black">{item.name}</p>
-                      <p className="text-[9px] text-slate-600">
-                        {item.qty} {item.unit} x ₹{item.price.toFixed(2)} (GST {item.gst_rate}%)
-                      </p>
-                    </div>
-                    <span className="font-bold text-black shrink-0">
-                      ₹{item.line_total.toFixed(2)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-
-              {/* Totals Summary */}
-              <div className="space-y-1 pt-1 text-[11px]">
-                <div className="flex justify-between">
-                  <span>Subtotal:</span>
-                  <span>₹{completedInvoice.subtotal.toFixed(2)}</span>
-                </div>
-                {completedInvoice.discount_amount > 0 && (
-                  <div className="flex justify-between text-[#0D9488]">
-                    <span>Discount:</span>
-                    <span>-₹{completedInvoice.discount_amount.toFixed(2)}</span>
-                  </div>
-                )}
-                <div className="flex justify-between text-slate-700">
-                  <span>Total GST:</span>
-                  <span>₹{completedInvoice.total_gst.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between text-sm font-black pt-1 border-t border-black text-black">
-                  <span>GRAND TOTAL:</span>
-                  <span>₹{completedInvoice.grand_total.toLocaleString('en-IN')}</span>
-                </div>
-              </div>
-
-              {/* Footer */}
-              <div className="text-center pt-3 text-[10px] text-slate-600 space-y-0.5">
-                <p>Thank you for shopping with us!</p>
-                <p className="font-sans text-[9px] text-slate-400">Powered by nivopos.in</p>
+            {/* Real Printable Receipt Paper Body (58mm Thermal GST Rule 46 Compliant) */}
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 max-h-[60vh] overflow-y-auto">
+              <div className="w-full max-w-[280px] mx-auto bg-white p-3 rounded-xl shadow-xs border border-slate-200">
+                <ThermalReceipt
+                  storeProfile={userProfile}
+                  invoice={completedInvoice}
+                  items={completedItems}
+                />
               </div>
             </div>
 
@@ -1224,6 +1143,16 @@ export const PosBilling: React.FC<PosBillingProps> = ({
           </div>
         </div>
       )}
+      {/* Dedicated 58mm Thermal Receipt Print Area (Printed when window.print() is called) */}
+      <div id="thermal-receipt-print-area" className="hidden print:block">
+        {completedInvoice && (
+          <ThermalReceipt
+            storeProfile={userProfile}
+            invoice={completedInvoice}
+            items={completedItems}
+          />
+        )}
+      </div>
     </div>
   );
 };

@@ -142,6 +142,7 @@ export interface PurchaseBillItem {
   id?: string;
   name: string;
   qty: number | string;
+  free_qty?: number | string;
   unit: string;
   purchase_price: number | string;
   selling_price?: number | string | null;

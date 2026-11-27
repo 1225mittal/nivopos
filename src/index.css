@@ -53,30 +53,50 @@
   border: 1px solid #e2e8f0;
 }
 
-/* Dedicated Receipt Printing CSS */
+/* 58mm Indian GST Rule 46 Compliant Thermal Receipt Print Rules */
+@page {
+  size: 58mm auto;
+  margin: 0mm;
+}
+
 @media print {
-  body {
+  html, body {
+    margin: 0 !important;
+    padding: 0 !important;
     background: #ffffff !important;
     color: #000000 !important;
+    width: 58mm !important;
   }
+
   body * {
     visibility: hidden;
   }
-  #printable-receipt, #printable-receipt * {
+
+  #thermal-receipt-print-area,
+  #thermal-receipt-print-area *,
+  #printable-receipt,
+  #printable-receipt * {
     visibility: visible;
   }
+
+  #thermal-receipt-print-area,
   #printable-receipt {
+    display: block !important;
     position: absolute;
     left: 0;
     top: 0;
-    width: 100%;
-    margin: 0;
-    padding: 10px;
+    width: 58mm !important;
+    max-width: 58mm !important;
+    margin: 0 !important;
+    padding: 2mm 3mm 12mm 3mm !important; /* 12mm bottom tear padding */
     background: #ffffff !important;
     color: #000000 !important;
+    font-family: 'Courier New', Courier, monospace !important;
     box-shadow: none !important;
     border: none !important;
+    overflow: visible !important;
   }
+
   .no-print {
     display: none !important;
   }
