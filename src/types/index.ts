@@ -161,6 +161,7 @@ export interface PurchaseBillItem {
   image_url?: string;
   category?: string;
   sub_category?: string;
+  bill_line_total?: number | string;
 }
 
 export interface PurchaseBillData {
