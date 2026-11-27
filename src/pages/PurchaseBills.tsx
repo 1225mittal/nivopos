@@ -41,6 +41,7 @@ import {
   RotateCw,
   ZoomIn,
   ZoomOut,
+  Edit2,
 } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 import QRCode from 'react-qr-code';
@@ -327,6 +328,20 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
   const [loadingSuppliers, setLoadingSuppliers] = useState(false);
   const [vendorSearchQuery, setVendorSearchQuery] = useState('');
 
+  // Supplier Edit Modal State
+  const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
+  const [supplierModalOpen, setSupplierModalOpen] = useState(false);
+  const [suppName, setSuppName] = useState('');
+  const [suppGstin, setSuppGstin] = useState('');
+  const [suppPhone, setSuppPhone] = useState('');
+  const [suppEmail, setSuppEmail] = useState('');
+  const [suppAddress, setSuppAddress] = useState('');
+  const [suppFssai, setSuppFssai] = useState('');
+  const [isSavingSupplier, setIsSavingSupplier] = useState(false);
+
+  // Inward Bill Edit & Delete State
+  const [editingBillId, setEditingBillId] = useState<string | null>(null);
+
   // Invoices Ledger Search Filter
   const [ledgerSearchQuery, setLedgerSearchQuery] = useState('');
 
@@ -544,6 +559,196 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
       setLoadingSuppliers(false);
     }
   }, [currentUser?.id]);
+
+  // Edit / Delete Supplier Handlers
+  const openEditSupplierModal = (s: Supplier) => {
+    setEditingSupplier(s);
+    setSuppName(s.name || '');
+    setSuppGstin(s.gstin || '');
+    setSuppPhone(s.phone || s.contact || '');
+    setSuppEmail(s.email || '');
+    setSuppAddress(s.address || '');
+    setSuppFssai(s.fssai || '');
+    setSupplierModalOpen(true);
+  };
+
+  const handleSaveSupplier = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingSupplier?.id || !currentUser?.id) return;
+    if (!suppName.trim()) {
+      alert('Vendor name is required');
+      return;
+    }
+    setIsSavingSupplier(true);
+    try {
+      const payload = {
+        name: suppName.trim(),
+        gstin: suppGstin.trim().toUpperCase() || null,
+        phone: suppPhone.trim() || null,
+        contact: suppPhone.trim() || null,
+        email: suppEmail.trim() || null,
+        address: suppAddress.trim() || null,
+        fssai: suppFssai.trim() || null,
+      };
+      const { error } = await supabase
+        .from('suppliers')
+        .update(payload)
+        .eq('id', editingSupplier.id)
+        .eq('store_id', currentUser.id);
+
+      if (error) {
+        alert(`Failed to update vendor: ${error.message}`);
+        setIsSavingSupplier(false);
+        return;
+      }
+
+      setSuppliersList((prev) =>
+        prev.map((s) => (s.id === editingSupplier.id ? { ...s, ...payload } : s))
+      );
+      setSupplierModalOpen(false);
+      setEditingSupplier(null);
+    } catch (err: any) {
+      alert(`Error updating vendor: ${err.message}`);
+    } finally {
+      setIsSavingSupplier(false);
+    }
+  };
+
+  const handleDeleteSupplier = async (s: Supplier) => {
+    if (!s.id || !currentUser?.id) return;
+    if (!window.confirm(`Are you sure you want to delete vendor "${s.name}"?`)) {
+      return;
+    }
+    try {
+      const { error } = await supabase
+        .from('suppliers')
+        .delete()
+        .eq('id', s.id)
+        .eq('store_id', currentUser.id);
+
+      if (error) {
+        alert(`Failed to delete vendor: ${error.message}`);
+        return;
+      }
+
+      setSuppliersList((prev) => prev.filter((item) => item.id !== s.id));
+    } catch (err: any) {
+      alert(`Error deleting vendor: ${err.message}`);
+    }
+  };
+
+  // Edit / Delete Purchase Bill Handlers
+  const handleEditBill = async (bill: PurchaseBillRecord) => {
+    if (!bill.id || !currentUser?.id) return;
+    try {
+      setEditingBillId(bill.id);
+      setBillNumber(bill.bill_number || (bill as any).invoice_number || '');
+      setBillDate(bill.bill_date || (bill as any).invoice_date || bill.created_at?.slice(0, 10) || new Date().toISOString().slice(0, 10));
+      setSupplierName(bill.supplier_name || (bill as any).seller_name || '');
+      setSupplierGstin(bill.supplier_gstin || (bill as any).gstin || '');
+      setSupplierAddress(bill.supplier_address || (bill as any).address || '');
+      setSupplierContact(bill.supplier_contact || (bill as any).phone || '');
+      setSupplierEmail(bill.supplier_email || '');
+      setSupplierFssai(bill.supplier_fssai || '');
+
+      // Fetch items from purchase_bill_items scoped strictly by store_id
+      const { data: dbItems, error: itemsErr } = await supabase
+        .from('purchase_bill_items')
+        .select('*')
+        .eq('purchase_bill_id', bill.id)
+        .eq('store_id', currentUser.id);
+
+      if (!itemsErr && dbItems && dbItems.length > 0) {
+        const mappedItems: PurchaseBillItem[] = dbItems.map((row: any) => {
+          const qty = Number(row.quantity ?? row.qty) || 1;
+          const rate = Number(row.purchase_rate ?? row.rate) || 0;
+          const disc = Number(row.discount) || 0;
+          const gst = Number(row.gst_rate) || 0;
+          const gross = qty * rate;
+          const discPct = gross > 0 ? (disc / gross) * 100 : 0;
+          return {
+            id: row.id,
+            name: row.item_name || row.name || 'Item',
+            item_name: row.item_name || row.name || 'Item',
+            qty: qty,
+            unit: row.unit || 'pcs',
+            purchase_price: rate,
+            purchase_rate: rate,
+            selling_price: row.mrp || null,
+            mrp: row.mrp || null,
+            gst_rate: gst,
+            discount: disc,
+            discount_percent: Math.round(discPct * 100) / 100,
+            total_amount: row.total || Math.round(Math.max(0, gross - disc) * (1 + gst / 100) * 100) / 100,
+            hsn_code: row.hsn_code || '',
+            category: row.category || 'General',
+            sub_category: row.sub_category || 'General',
+          };
+        });
+        setItems(mappedItems);
+      } else if (bill.items_json && Array.isArray(bill.items_json) && bill.items_json.length > 0) {
+        setItems(bill.items_json);
+      }
+
+      setHubTab('new-purchase');
+      if (onSelectSubTab) {
+        onSelectSubTab('new');
+      }
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch (err: any) {
+      console.error('[PurchaseBills] Error loading bill for edit:', err);
+      setFeedback({ type: 'error', message: `Failed to load bill for editing: ${err.message}` });
+    }
+  };
+
+  const handleCancelEditBill = () => {
+    setEditingBillId(null);
+    setItems([]);
+    setBillNumber('');
+    setBillDate(new Date().toISOString().slice(0, 10));
+    setSupplierName('');
+    setSupplierGstin('');
+    setSupplierAddress('');
+    setSupplierContact('');
+    setSupplierEmail('');
+    setSupplierFssai('');
+  };
+
+  const handleDeleteBill = async (bill: PurchaseBillRecord) => {
+    if (!bill.id || !currentUser?.id) return;
+    const invNo = bill.bill_number || (bill as any).invoice_number || 'this bill';
+    if (!window.confirm(`Are you sure you want to delete purchase bill "${invNo}"? This action cannot be undone.`)) {
+      return;
+    }
+    try {
+      // 1. Delete child items scoped strictly by store_id
+      await supabase
+        .from('purchase_bill_items')
+        .delete()
+        .eq('purchase_bill_id', bill.id)
+        .eq('store_id', currentUser.id);
+
+      // 2. Delete the purchase bill record scoped strictly by store_id
+      const { error } = await supabase
+        .from('purchase_bills')
+        .delete()
+        .eq('id', bill.id)
+        .eq('store_id', currentUser.id);
+
+      if (error) {
+        setFeedback({ type: 'error', message: `Failed to delete bill: ${error.message}` });
+        return;
+      }
+
+      setSavedBills((prev) => prev.filter((b) => b.id !== bill.id));
+      if (editingBillId === bill.id) {
+        handleCancelEditBill();
+      }
+      setFeedback({ type: 'success', message: `Purchase bill "${invNo}" deleted successfully.` });
+    } catch (err: any) {
+      setFeedback({ type: 'error', message: `Error deleting bill: ${err.message}` });
+    }
+  };
 
   useEffect(() => {
     fetchSavedBills();
@@ -1596,50 +1801,140 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
       };
 
       let savedBillData: any = null;
-      let { data: insertedBill, error: billErr } = await supabase
-        .from('purchase_bills')
-        .insert(billPayload)
-        .select('*')
-        .single();
 
-      if (billErr) {
-        // Fallback for column variances (file_url, invoice_number, etc.)
-        const fallbackPayload = { ...billPayload };
-        delete fallbackPayload.file_url;
-        delete fallbackPayload.invoice_number;
-        delete fallbackPayload.invoice_date;
-        delete fallbackPayload.total_amount;
-        delete fallbackPayload.tax_amount;
-        if (billErr.message?.includes('supplier_id')) {
-          delete fallbackPayload.supplier_id;
-          delete fallbackPayload.supplier_gstin;
-          delete fallbackPayload.supplier_address;
-          delete fallbackPayload.supplier_contact;
-          delete fallbackPayload.supplier_email;
-          delete fallbackPayload.supplier_fssai;
+      if (editingBillId) {
+        // Update existing purchase bill scoped by store_id
+        const updatePayload: any = {
+          supplier_id: linkedSupplierId,
+          supplier_name: cleanSuppName,
+          supplier_gstin: cleanGstin || null,
+          supplier_address: supplierAddress.trim() || null,
+          supplier_contact: supplierContact.trim() || null,
+          supplier_email: supplierEmail.trim() || null,
+          supplier_fssai: supplierFssai.trim() || null,
+          invoice_number: invNo,
+          bill_number: invNo,
+          invoice_date: invDate,
+          bill_date: invDate,
+          total_amount: totalAmt,
+          grand_total: totalAmt,
+          tax_amount: taxAmt,
+          total_gst: taxAmt,
+          subtotal: subtotalAmt,
+          total_items: items.length,
+          total_units: totalUnits,
+          items_json: items,
+        };
+        if (primaryFileUrl) {
+          updatePayload.file_url = primaryFileUrl;
+        }
+        if (uploadedFilePaths && uploadedFilePaths.length > 0) {
+          updatePayload.bill_photo_urls = uploadedFilePaths;
         }
 
-        const retryBill = await supabase
+        const { data: updatedBill, error: updateErr } = await supabase
           .from('purchase_bills')
-          .insert(fallbackPayload)
+          .update(updatePayload)
+          .eq('id', editingBillId)
+          .eq('store_id', verifiedStoreId)
           .select('*')
           .single();
 
-        if (retryBill.error) {
-          setFeedback({
-            type: 'error',
-            message: `Failed to save purchase bill: ${retryBill.error.message}`,
-          });
-          setIsSavingStock(false);
-          return;
+        if (updateErr) {
+          console.warn('[PurchaseBills] update purchase_bills retry fallback:', updateErr.message);
+          const fallbackUpdate = { ...updatePayload };
+          delete fallbackUpdate.file_url;
+          delete fallbackUpdate.invoice_number;
+          delete fallbackUpdate.invoice_date;
+          delete fallbackUpdate.total_amount;
+          delete fallbackUpdate.tax_amount;
+          if (updateErr.message?.includes('supplier_id')) {
+            delete fallbackUpdate.supplier_id;
+            delete fallbackUpdate.supplier_gstin;
+            delete fallbackUpdate.supplier_address;
+            delete fallbackUpdate.supplier_contact;
+            delete fallbackUpdate.supplier_email;
+            delete fallbackUpdate.supplier_fssai;
+          }
+          const { data: retryUpdated, error: retryErr } = await supabase
+            .from('purchase_bills')
+            .update(fallbackUpdate)
+            .eq('id', editingBillId)
+            .eq('store_id', verifiedStoreId)
+            .select('*')
+            .single();
+
+          if (retryErr) {
+            setFeedback({
+              type: 'error',
+              message: `Failed to update purchase bill: ${retryErr.message}`,
+            });
+            setIsSavingStock(false);
+            return;
+          }
+          savedBillData = retryUpdated || { id: editingBillId, ...fallbackUpdate };
+        } else {
+          savedBillData = updatedBill;
         }
-        savedBillData = retryBill.data;
+
+        // Delete existing items for this bill scoped strictly by store_id
+        await supabase
+          .from('purchase_bill_items')
+          .delete()
+          .eq('purchase_bill_id', editingBillId)
+          .eq('store_id', verifiedStoreId);
       } else {
-        savedBillData = insertedBill;
+        let { data: insertedBill, error: billErr } = await supabase
+          .from('purchase_bills')
+          .insert(billPayload)
+          .select('*')
+          .single();
+
+        if (billErr) {
+          // Fallback for column variances (file_url, invoice_number, etc.)
+          const fallbackPayload = { ...billPayload };
+          delete fallbackPayload.file_url;
+          delete fallbackPayload.invoice_number;
+          delete fallbackPayload.invoice_date;
+          delete fallbackPayload.total_amount;
+          delete fallbackPayload.tax_amount;
+          if (billErr.message?.includes('supplier_id')) {
+            delete fallbackPayload.supplier_id;
+            delete fallbackPayload.supplier_gstin;
+            delete fallbackPayload.supplier_address;
+            delete fallbackPayload.supplier_contact;
+            delete fallbackPayload.supplier_email;
+            delete fallbackPayload.supplier_fssai;
+          }
+
+          const retryBill = await supabase
+            .from('purchase_bills')
+            .insert(fallbackPayload)
+            .select('*')
+            .single();
+
+          if (retryBill.error) {
+            setFeedback({
+              type: 'error',
+              message: `Failed to save purchase bill: ${retryBill.error.message}`,
+            });
+            setIsSavingStock(false);
+            return;
+          }
+          savedBillData = retryBill.data;
+        } else {
+          savedBillData = insertedBill;
+        }
       }
 
       if (savedBillData) {
-        setSavedBills((prev) => [savedBillData, ...prev]);
+        if (editingBillId) {
+          setSavedBills((prev) =>
+            prev.map((b) => (b.id === editingBillId ? savedBillData : b))
+          );
+        } else {
+          setSavedBills((prev) => [savedBillData, ...prev]);
+        }
 
         // Insert individual item rows into public.purchase_bill_items
         const savedBillId = savedBillData.id;
@@ -1704,10 +1999,13 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
 
       setFeedback({
         type: 'success',
-        message: `Inventory Synchronized! Added ${createdCount} new products and restocked ${updatedCount} existing products (${totalUnits} total units). Supplier and purchase bill records saved.`,
+        message: editingBillId
+          ? `Purchase Bill #${invNo} updated successfully! Synchronized ${updatedCount} products and added ${createdCount} new products.`
+          : `Inventory Synchronized! Added ${createdCount} new products and restocked ${updatedCount} existing products (${totalUnits} total units). Supplier and purchase bill records saved.`,
       });
 
       // Reset state for next bill
+      setEditingBillId(null);
       setItems([]);
       if (clubAsSingleBill || selectedFiles.length <= 1) {
         clearAllSelectedFiles();
@@ -1875,6 +2173,32 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
       <div className="w-full space-y-6">
         {hubTab === 'new-purchase' && (
           <div className="space-y-6">
+            {/* Editing Inward Bill Banner */}
+            {editingBillId && (
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-amber-50 border border-amber-200 rounded-2xl shadow-2xs">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-xl bg-amber-100 flex items-center justify-center text-amber-700 shrink-0">
+                    <AlertCircle className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-bold text-amber-900">
+                      Editing Inward Bill #{billNumber || editingBillId}
+                    </h4>
+                    <p className="text-[11px] text-amber-700">
+                      Review or update line items and supplier details. Saving will update this bill and refresh inward inventory.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCancelEditBill}
+                  className="px-3.5 py-1.5 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold rounded-xl border border-slate-300 transition-colors shadow-2xs self-start sm:self-auto shrink-0"
+                >
+                  Cancel Edit
+                </button>
+              </div>
+            )}
+
             {/* TOP UPLOAD CARD: "Invoice Upload Drop-Zone & Mobile Camera Sync" */}
             <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-4">
               {/* Header */}
@@ -3010,24 +3334,39 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
             )}
 
             {/* Commit Stock Action Button: Primary #4338CA */}
-            <button
-              type="button"
-              onClick={handleSaveToStoreStock}
-              disabled={isSavingStock || items.length === 0}
-              className="w-full py-3.5 px-4 rounded-xl bg-[#4338CA] hover:bg-[#3730A3] text-white font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-md hover:shadow-lg disabled:opacity-50"
-            >
-              {isSavingStock ? (
-                <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Synchronizing Suppliers & Product Master...</span>
-                </>
-              ) : (
-                <>
-                  <PackageCheck className="w-4 h-4" />
-                  <span>+ Inward to Product Master & Save Bill ({items.length} Items)</span>
-                </>
+            <div className="flex flex-col sm:flex-row items-center gap-3">
+              {editingBillId && (
+                <button
+                  type="button"
+                  onClick={handleCancelEditBill}
+                  className="w-full sm:w-auto py-3.5 px-5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs uppercase tracking-wider transition-colors border border-slate-200 shrink-0"
+                >
+                  Cancel Edit
+                </button>
               )}
-            </button>
+              <button
+                type="button"
+                onClick={handleSaveToStoreStock}
+                disabled={isSavingStock || items.length === 0}
+                className="w-full flex-1 py-3.5 px-4 rounded-xl bg-[#4338CA] hover:bg-[#3730A3] text-white font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-md hover:shadow-lg disabled:opacity-50"
+              >
+                {isSavingStock ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Synchronizing Suppliers & Product Master...</span>
+                  </>
+                ) : (
+                  <>
+                    <PackageCheck className="w-4 h-4" />
+                    <span>
+                      {editingBillId
+                        ? `Update Purchase Bill #${billNumber || editingBillId} (${items.length} Items)`
+                        : `+ Inward to Product Master & Save Bill (${items.length} Items)`}
+                    </span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -3198,17 +3537,43 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
                             ₹{grandTotalVal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </td>
                           <td className="py-3 px-3 text-center">
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleOpenBillDetails(bill);
-                              }}
-                              className="px-3 py-1.5 rounded-xl bg-[#4338CA] hover:bg-[#3730A3] text-white font-bold text-xs inline-flex items-center gap-1.5 transition-colors shadow-2xs"
-                            >
-                              <Eye className="w-3.5 h-3.5" />
-                              <span>View Bill</span>
-                            </button>
+                            <div className="flex items-center justify-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenBillDetails(bill);
+                                }}
+                                className="px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs inline-flex items-center gap-1 transition-colors border border-slate-200"
+                                title="View Bill Details"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                                <span>View</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleEditBill(bill);
+                                }}
+                                className="px-2.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-[#4338CA] font-bold text-xs inline-flex items-center gap-1 transition-colors border border-indigo-200"
+                                title="Edit Inward Bill"
+                              >
+                                <Edit2 className="w-3.5 h-3.5" />
+                                <span>Edit</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteBill(bill);
+                                }}
+                                className="p-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-nivo-rose font-bold text-xs inline-flex items-center transition-colors border border-rose-200"
+                                title="Delete Bill"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -3364,14 +3729,30 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
                           <div className="flex items-center justify-end gap-1.5">
                             <button
                               type="button"
+                              onClick={() => openEditSupplierModal(supplier)}
+                              className="p-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 transition-colors"
+                              title="Edit Vendor"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteSupplier(supplier)}
+                              className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-nivo-rose border border-rose-200 transition-colors"
+                              title="Delete Vendor"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
                               onClick={() => {
                                 setLedgerSearchQuery(supplier.name);
                                 setHubTab('ledger');
                               }}
-                              className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-semibold transition-colors"
+                              className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-semibold transition-colors border border-slate-200"
                               title="View invoices from this supplier"
                             >
-                              View Invoices
+                              Invoices
                             </button>
                             <button
                               type="button"
@@ -3755,7 +4136,7 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
                   </div>
                 </div>
 
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-3">
                   <div className="text-right">
                     <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">
                       Grand Total
@@ -3763,6 +4144,34 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
                     <span className="text-xl font-black text-[#0D9488] font-mono">
                       ₹{grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const billToEdit = detailsModalBill;
+                        setDetailsModalBill(null);
+                        handleEditBill(billToEdit);
+                      }}
+                      className="px-2.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-[#4338CA] border border-indigo-200 text-xs font-bold inline-flex items-center gap-1 transition-colors"
+                      title="Edit this purchase bill"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                      <span>Edit</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const billToDelete = detailsModalBill;
+                        setDetailsModalBill(null);
+                        handleDeleteBill(billToDelete);
+                      }}
+                      className="p-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-nivo-rose border border-rose-200 text-xs font-bold inline-flex items-center transition-colors"
+                      title="Delete this purchase bill"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
                   </div>
 
                   <button
@@ -4287,6 +4696,143 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
                 </span>
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ================= EDIT VENDOR / SUPPLIER MODAL ================= */}
+      {supplierModalOpen && editingSupplier && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-800/40 backdrop-blur-sm overflow-y-auto">
+          <div className="relative w-full max-w-lg bg-white rounded-3xl p-6 shadow-2xl border border-slate-200 my-auto space-y-5">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-[#4338CA]">
+                  <Building2 className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-[#0F172A]">Edit Vendor Profile</h3>
+                  <p className="text-[11px] text-slate-500">Update supplier contact, GSTIN, and licensing details</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setSupplierModalOpen(false);
+                  setEditingSupplier(null);
+                }}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveSupplier} className="space-y-4">
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  Vendor / Business Name *
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={suppName}
+                  onChange={(e) => setSuppName(e.target.value)}
+                  placeholder="e.g. Hindustan Unilever Ltd"
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-none focus:border-[#4338CA] focus:ring-1 focus:ring-[#4338CA] text-slate-900"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    GSTIN
+                  </label>
+                  <input
+                    type="text"
+                    value={suppGstin}
+                    onChange={(e) => setSuppGstin(e.target.value.toUpperCase())}
+                    placeholder="07AAAAA0000A1Z5"
+                    maxLength={15}
+                    className="w-full px-3 py-2 text-xs font-mono rounded-xl border border-slate-200 focus:outline-none focus:border-[#4338CA] focus:ring-1 focus:ring-[#4338CA] text-slate-900 uppercase"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Phone / Contact
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="tel"
+                    value={suppPhone}
+                    onChange={(e) => setSuppPhone(e.target.value)}
+                    placeholder="9876543210"
+                    className="w-full px-3 py-2 text-xs font-mono rounded-xl border border-slate-200 focus:outline-none focus:border-[#4338CA] focus:ring-1 focus:ring-[#4338CA] text-slate-900"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    Email Address
+                  </label>
+                  <input
+                    type="email"
+                    value={suppEmail}
+                    onChange={(e) => setSuppEmail(e.target.value)}
+                    placeholder="billing@vendor.com"
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-none focus:border-[#4338CA] focus:ring-1 focus:ring-[#4338CA] text-slate-900"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                    FSSAI License #
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={suppFssai}
+                    onChange={(e) => setSuppFssai(e.target.value)}
+                    placeholder="14-digit FSSAI number"
+                    maxLength={14}
+                    className="w-full px-3 py-2 text-xs font-mono rounded-xl border border-slate-200 focus:outline-none focus:border-[#4338CA] focus:ring-1 focus:ring-[#4338CA] text-slate-900"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  Business Address
+                </label>
+                <textarea
+                  rows={2}
+                  value={suppAddress}
+                  onChange={(e) => setSuppAddress(e.target.value)}
+                  placeholder="Street, City, State, PIN"
+                  className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 focus:outline-none focus:border-[#4338CA] focus:ring-1 focus:ring-[#4338CA] text-slate-900 resize-none"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSupplierModalOpen(false);
+                    setEditingSupplier(null);
+                  }}
+                  className="px-4 py-2 text-xs font-semibold rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isSavingSupplier}
+                  className="px-5 py-2 text-xs font-bold rounded-xl bg-[#4338CA] hover:bg-[#3730A3] text-white transition-colors flex items-center gap-1.5 shadow-2xs disabled:opacity-50"
+                >
+                  {isSavingSupplier && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  <span>Save Vendor</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

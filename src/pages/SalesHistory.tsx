@@ -19,6 +19,7 @@ import {
   ExternalLink,
   Upload,
   Image as ImageIcon,
+  Trash2,
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { Invoice, InvoiceItem, StoreProfile } from '../types';
@@ -120,6 +121,44 @@ export const SalesHistory: React.FC<SalesHistoryProps> = ({
       setInvoiceItems([]);
     } finally {
       setLoadingItems(false);
+    }
+  };
+
+  const handleDeleteInvoice = async (inv: Invoice) => {
+    if (!inv.id || !currentUser?.id) return;
+    if (
+      !window.confirm(
+        `Are you sure you want to delete sales invoice "${inv.invoice_number}"? This will permanently delete the invoice and its line items.`
+      )
+    ) {
+      return;
+    }
+    try {
+      // 1. Delete child invoice items strictly scoped by store_id
+      await supabase
+        .from('invoice_items')
+        .delete()
+        .eq('invoice_id', inv.id)
+        .eq('store_id', currentUser.id);
+
+      // 2. Delete invoice strictly scoped by store_id
+      const { error } = await supabase
+        .from('invoices')
+        .delete()
+        .eq('id', inv.id)
+        .eq('store_id', currentUser.id);
+
+      if (error) {
+        alert(`Failed to delete invoice: ${error.message}`);
+        return;
+      }
+
+      setInvoices((prev) => prev.filter((i) => i.id !== inv.id));
+      if (selectedInvoice?.id === inv.id) {
+        setSelectedInvoice(null);
+      }
+    } catch (err: any) {
+      alert(`Error deleting invoice: ${err.message}`);
     }
   };
 
@@ -424,15 +463,27 @@ export const SalesHistory: React.FC<SalesHistoryProps> = ({
                       </span>
                     </td>
                     <td className="px-4 py-3 text-center">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleSelectInvoice(inv);
-                        }}
-                        className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold border border-slate-200"
-                      >
-                        View / Print
-                      </button>
+                      <div className="flex items-center justify-center gap-1.5">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleSelectInvoice(inv);
+                          }}
+                          className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold border border-slate-200 transition-colors"
+                        >
+                          View / Print
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteInvoice(inv);
+                          }}
+                          className="p-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-nivo-rose border border-rose-200 transition-colors"
+                          title="Delete Invoice"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -631,12 +682,22 @@ export const SalesHistory: React.FC<SalesHistoryProps> = ({
                 </button>
               )}
 
-              <button
-                onClick={() => setSelectedInvoice(null)}
-                className="w-full py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors"
-              >
-                Close
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => handleDeleteInvoice(selectedInvoice)}
+                  className="py-2.5 px-3 rounded-xl bg-rose-50 hover:bg-rose-100 text-nivo-rose border border-rose-200 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors"
+                  title="Delete Invoice"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span>Delete Invoice</span>
+                </button>
+                <button
+                  onClick={() => setSelectedInvoice(null)}
+                  className="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition-colors"
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
         </div>

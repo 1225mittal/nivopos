@@ -43,6 +43,15 @@ const DEFAULT_CATEGORIES = [
 const GST_RATES = [0, 5, 12, 18, 28];
 const UNITS = ['pcs', 'kg', 'ltr', 'pack', 'box', 'gm', 'ml'];
 
+const sanitizeDecimalInput = (val: string): string => {
+  let cleaned = val.replace(/[^0-9.]/g, '');
+  const parts = cleaned.split('.');
+  if (parts.length > 2) {
+    cleaned = parts[0] + '.' + parts.slice(1).join('');
+  }
+  return cleaned;
+};
+
 export const ProductMaster: React.FC<ProductMasterProps> = ({
   currentUser,
   onNavigateToPos,
@@ -65,12 +74,12 @@ export const ProductMaster: React.FC<ProductMasterProps> = ({
   const [customCategory, setCustomCategory] = useState('');
   const [subCategory, setSubCategory] = useState('');
   const [unit, setUnit] = useState('pcs');
-  const [mrp, setMrp] = useState<number | ''>('');
-  const [sellingPrice, setSellingPrice] = useState<number | ''>('');
-  const [purchasePrice, setPurchasePrice] = useState<number | ''>('');
+  const [mrp, setMrp] = useState<string>('');
+  const [sellingPrice, setSellingPrice] = useState<string>('');
+  const [purchasePrice, setPurchasePrice] = useState<string>('');
   const [gstRate, setGstRate] = useState<number>(5);
-  const [stockQty, setStockQty] = useState<number | ''>(0);
-  const [lowStockAlert, setLowStockAlert] = useState<number | ''>(10);
+  const [stockQty, setStockQty] = useState<string>('0');
+  const [lowStockAlert, setLowStockAlert] = useState<string>('10');
   const [imageUrl, setImageUrl] = useState('');
   const [uploadingImage, setUploadingImage] = useState(false);
 
@@ -132,8 +141,8 @@ export const ProductMaster: React.FC<ProductMasterProps> = ({
     setSellingPrice('');
     setPurchasePrice('');
     setGstRate(5);
-    setStockQty(0);
-    setLowStockAlert(10);
+    setStockQty('0');
+    setLowStockAlert('10');
     setImageUrl('');
     setModalOpen(true);
   };
@@ -157,12 +166,12 @@ export const ProductMaster: React.FC<ProductMasterProps> = ({
 
     setSubCategory(p.sub_category || '');
     setUnit(p.unit || 'pcs');
-    setMrp(p.mrp !== undefined && p.mrp !== null ? p.mrp : '');
-    setSellingPrice(p.selling_price !== undefined && p.selling_price !== null ? p.selling_price : '');
-    setPurchasePrice(p.purchase_price !== undefined && p.purchase_price !== null ? p.purchase_price : '');
+    setMrp(p.mrp !== undefined && p.mrp !== null ? String(p.mrp) : '');
+    setSellingPrice(p.selling_price !== undefined && p.selling_price !== null ? String(p.selling_price) : '');
+    setPurchasePrice(p.purchase_price !== undefined && p.purchase_price !== null ? String(p.purchase_price) : '');
     setGstRate(p.gst_rate !== undefined && p.gst_rate !== null ? p.gst_rate : 5);
-    setStockQty(p.stock_qty !== undefined && p.stock_qty !== null ? p.stock_qty : 0);
-    setLowStockAlert(p.low_stock_alert !== undefined && p.low_stock_alert !== null ? p.low_stock_alert : 10);
+    setStockQty(p.stock_qty !== undefined && p.stock_qty !== null ? String(p.stock_qty) : '0');
+    setLowStockAlert(p.low_stock_alert !== undefined && p.low_stock_alert !== null ? String(p.low_stock_alert) : '10');
     setImageUrl(p.image_url || '');
     setModalOpen(true);
   };
@@ -194,15 +203,15 @@ export const ProductMaster: React.FC<ProductMasterProps> = ({
     setSaving(true);
     setFeedback(null);
 
-    const mrpVal = Number(mrp) || Number(sellingPrice) || 0;
+    const mrpVal = parseFloat(mrp) || parseFloat(sellingPrice) || 0;
     // Never leave selling_price as 0 when MRP is present
-    let spVal = Number(sellingPrice);
+    let spVal = parseFloat(sellingPrice);
     if ((isNaN(spVal) || spVal <= 0) && mrpVal > 0) {
       spVal = mrpVal;
     }
-    const buyVal = purchasePrice !== '' ? Number(purchasePrice) : null;
-    const stockVal = Number(stockQty) || 0;
-    const lowAlertVal = Number(lowStockAlert) || 5;
+    const buyVal = purchasePrice.trim() !== '' ? parseFloat(purchasePrice) || null : null;
+    const stockVal = parseFloat(stockQty) || 0;
+    const lowAlertVal = parseFloat(lowStockAlert) || 5;
 
     const finalCategory = isCustomCategory
       ? customCategory.trim() || 'General Retail'
@@ -855,10 +864,10 @@ export const ProductMaster: React.FC<ProductMasterProps> = ({
                     MRP (₹) *
                   </label>
                   <input
-                    type="number"
-                    step="0.01"
+                    type="text"
+                    inputMode="decimal"
                     value={mrp}
-                    onChange={(e) => setMrp(e.target.value === '' ? '' : parseFloat(e.target.value))}
+                    onChange={(e) => setMrp(sanitizeDecimalInput(e.target.value))}
                     placeholder="275.00"
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 font-mono placeholder-slate-400 focus:outline-none focus:border-[#4338CA] focus:bg-white"
                   />
@@ -869,13 +878,11 @@ export const ProductMaster: React.FC<ProductMasterProps> = ({
                     Selling Price (₹) *
                   </label>
                   <input
-                    type="number"
-                    step="0.01"
+                    type="text"
+                    inputMode="decimal"
                     required
                     value={sellingPrice}
-                    onChange={(e) =>
-                      setSellingPrice(e.target.value === '' ? '' : parseFloat(e.target.value))
-                    }
+                    onChange={(e) => setSellingPrice(sanitizeDecimalInput(e.target.value))}
                     placeholder="260.00"
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-[#4338CA] font-bold font-mono placeholder-slate-400 focus:outline-none focus:border-[#4338CA] focus:bg-white"
                   />
@@ -889,12 +896,10 @@ export const ProductMaster: React.FC<ProductMasterProps> = ({
                     Purchase Rate (₹)
                   </label>
                   <input
-                    type="number"
-                    step="0.01"
+                    type="text"
+                    inputMode="decimal"
                     value={purchasePrice}
-                    onChange={(e) =>
-                      setPurchasePrice(e.target.value === '' ? '' : parseFloat(e.target.value))
-                    }
+                    onChange={(e) => setPurchasePrice(sanitizeDecimalInput(e.target.value))}
                     placeholder="240.00"
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 font-mono placeholder-slate-400 focus:outline-none focus:border-[#4338CA] focus:bg-white"
                   />
@@ -922,11 +927,10 @@ export const ProductMaster: React.FC<ProductMasterProps> = ({
                     Current Stock
                   </label>
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="decimal"
                     value={stockQty}
-                    onChange={(e) =>
-                      setStockQty(e.target.value === '' ? '' : parseInt(e.target.value))
-                    }
+                    onChange={(e) => setStockQty(sanitizeDecimalInput(e.target.value))}
                     placeholder="50"
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 font-mono placeholder-slate-400 focus:outline-none focus:border-[#4338CA] focus:bg-white"
                   />
@@ -937,11 +941,10 @@ export const ProductMaster: React.FC<ProductMasterProps> = ({
                     Low Stock Alert
                   </label>
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="decimal"
                     value={lowStockAlert}
-                    onChange={(e) =>
-                      setLowStockAlert(e.target.value === '' ? '' : parseInt(e.target.value))
-                    }
+                    onChange={(e) => setLowStockAlert(sanitizeDecimalInput(e.target.value))}
                     placeholder="10"
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-900 font-mono placeholder-slate-400 focus:outline-none focus:border-[#4338CA] focus:bg-white"
                   />
