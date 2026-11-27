@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from './lib/supabase';
-import { StoreProfile, AuthMode } from './types';
+import { StoreProfile, AuthMode, ActiveTab } from './types';
 import { LandingPage } from './pages/LandingPage';
-import { DashboardShell } from './pages/DashboardShell';
+import { DashboardShell, PurchaseSubTab } from './pages/DashboardShell';
 import { AdminUsersPanel } from './pages/AdminUsersPanel';
 import { MobileBillScan } from './pages/MobileBillScan';
 import { AuthModal } from './components/AuthModal';
@@ -17,6 +17,48 @@ function StoreOwnerApp({ currentPath, setCurrentPath }: StoreOwnerAppProps) {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [userProfile, setUserProfile] = useState<StoreProfile | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+
+  // Active navigation tab & purchase sub-tab persisted across page reloads
+  const [activeTab, setActiveTab] = useState<ActiveTab>(() => {
+    try {
+      const stored = localStorage.getItem('nivopos_active_tab');
+      if (stored && ['pos', 'products', 'purchase-bills', 'purchases', 'sales', 'settings'].includes(stored)) {
+        return stored as ActiveTab;
+      }
+    } catch (e) {
+      console.warn('[Nivo POS] Error reading active tab from localStorage:', e);
+    }
+    return 'pos';
+  });
+
+  const [purchaseSubTab, setPurchaseSubTab] = useState<PurchaseSubTab>(() => {
+    try {
+      const stored = localStorage.getItem('nivopos_purchase_subtab');
+      if (stored && ['new', 'ledger', 'vendors', 'returns'].includes(stored)) {
+        return stored as PurchaseSubTab;
+      }
+    } catch (e) {
+      console.warn('[Nivo POS] Error reading purchase subtab from localStorage:', e);
+    }
+    return 'new';
+  });
+
+  // Whenever activeTab or purchaseSubTab changes, save to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('nivopos_active_tab', activeTab);
+    } catch (e) {
+      console.warn('[Nivo POS] Error persisting active tab to localStorage:', e);
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('nivopos_purchase_subtab', purchaseSubTab);
+    } catch (e) {
+      console.warn('[Nivo POS] Error persisting purchase subtab to localStorage:', e);
+    }
+  }, [purchaseSubTab]);
 
   // HQ Admin verification state
   const [isHQAdmin, setIsHQAdmin] = useState<boolean | null>(null);
@@ -351,6 +393,10 @@ function StoreOwnerApp({ currentPath, setCurrentPath }: StoreOwnerAppProps) {
         userProfile={userProfile}
         onSignOut={handleSignOut}
         onRefreshProfile={handleRefreshProfile}
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+        activePurchaseSubTab={purchaseSubTab}
+        onPurchaseSubTabChange={setPurchaseSubTab}
       />
     );
   }
