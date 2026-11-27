@@ -287,6 +287,7 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
   // Multi-Page Bill Grouping State
   const [clubAsSingleBill, setClubAsSingleBill] = useState(true);
   const [activeSeparateFileIndex, setActiveSeparateFileIndex] = useState(0);
+  const [activeExtractedQueueIds, setActiveExtractedQueueIds] = useState<string[]>([]);
 
   // Purchase Hub Sub-tabs: 'new-purchase' | 'ledger' | 'vendors' | 'debit-note'
   type PurchaseHubTab = 'new-purchase' | 'ledger' | 'vendors' | 'debit-note';
@@ -700,6 +701,7 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
   const handleCancelEditBill = () => {
     setEditingBillId(null);
     setItems([]);
+    setActiveExtractedQueueIds([]);
     setBillNumber('');
     setBillDate(new Date().toISOString().slice(0, 10));
     setSupplierName('');
@@ -808,6 +810,7 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
       }
       return updated;
     });
+    setActiveExtractedQueueIds((prev) => prev.filter((qId) => qId !== id));
   };
 
   const clearAllSelectedFiles = () => {
@@ -815,6 +818,7 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
       if (f.previewUrl) URL.revokeObjectURL(f.previewUrl);
     });
     setSelectedFiles([]);
+    setActiveExtractedQueueIds([]);
     setActiveSeparateFileIndex(0);
     setReceivedPhoneCount(0);
   };
@@ -984,6 +988,10 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
             : clubAsSingleBill || selectedFiles.length <= 1
             ? selectedFiles
             : [selectedFiles[Math.min(activeSeparateFileIndex, selectedFiles.length - 1)]];
+
+        // Store active extracted queue IDs
+        const extractedIds = filesToProcess.map((f) => f.id).filter(Boolean);
+        setActiveExtractedQueueIds(extractedIds);
 
         for (const fileInfo of filesToProcess) {
           if (fileInfo.type === 'pdf') {
@@ -1576,7 +1584,9 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
 
       // 2. Upload original PDF and image files into Cloudflare R2 via uploadToR2
       const filesToSave =
-        clubAsSingleBill || selectedFiles.length <= 1
+        activeExtractedQueueIds.length > 0
+          ? selectedFiles.filter((f) => activeExtractedQueueIds.includes(f.id))
+          : clubAsSingleBill || selectedFiles.length <= 1
           ? selectedFiles
           : [selectedFiles[Math.min(activeSeparateFileIndex, selectedFiles.length - 1)]];
 
@@ -2003,14 +2013,28 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
       // Reset state for next bill
       setEditingBillId(null);
       setItems([]);
-      if (clubAsSingleBill || selectedFiles.length <= 1) {
-        clearAllSelectedFiles();
-      } else {
+
+      // Remove only the items whose id is in activeExtractedQueueIds, keeping all other uploaded bills in the queue
+      if (activeExtractedQueueIds.length > 0) {
+        selectedFiles.forEach((f) => {
+          if (activeExtractedQueueIds.includes(f.id) && f.previewUrl) {
+            URL.revokeObjectURL(f.previewUrl);
+          }
+        });
+        setSelectedFiles((prev) =>
+          prev.filter((item) => !activeExtractedQueueIds.includes(item.id))
+        );
+      } else if (!clubAsSingleBill && selectedFiles.length > 1) {
         const fileToRemove = filesToSave[0];
         if (fileToRemove?.previewUrl) URL.revokeObjectURL(fileToRemove.previewUrl);
         setSelectedFiles((prev) => prev.filter((f) => f.id !== fileToRemove?.id));
-        setActiveSeparateFileIndex(0);
+      } else {
+        clearAllSelectedFiles();
       }
+
+      // Reset activeExtractedQueueIds and clear bill form fields so user can immediately click Extract on next queued bill
+      setActiveExtractedQueueIds([]);
+      setActiveSeparateFileIndex(0);
       setRawText('');
       setSupplierName('');
       setSupplierGstin('');
@@ -2019,6 +2043,7 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
       setSupplierEmail('');
       setSupplierFssai('');
       setBillNumber('');
+      setBillDate(new Date().toISOString().slice(0, 10));
       fetchSavedBills();
       loadExistingStoreCatalogCategories();
       fetchSuppliers();
@@ -2437,6 +2462,7 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
                         <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
                           {selectedFiles.map((fileInfo, idx) => {
                             const isSelectedSeparate = !clubAsSingleBill && activeSeparateFileIndex === idx;
+                            const isExtracted = activeExtractedQueueIds.includes(fileInfo.id);
 
                             return (
                               <div
@@ -2445,7 +2471,9 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
                                   if (!clubAsSingleBill) setActiveSeparateFileIndex(idx);
                                 }}
                                 className={`flex items-center justify-between p-2.5 rounded-xl border transition-all text-xs ${
-                                  isSelectedSeparate
+                                  isExtracted
+                                    ? 'border-teal-300 bg-teal-50/40 ring-1 ring-teal-200 shadow-xs cursor-pointer'
+                                    : isSelectedSeparate
                                     ? 'border-[#4338CA] bg-indigo-50/50 ring-2 ring-indigo-200 shadow-xs cursor-pointer'
                                     : 'border-slate-200 bg-white hover:border-slate-300 shadow-xs cursor-pointer'
                                 }`}
@@ -2470,7 +2498,7 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
                                   )}
 
                                   <div className="min-w-0">
-                                    <div className="flex items-center gap-1.5">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
                                       {clubAsSingleBill ? (
                                         <span className="px-1.5 py-0.2 rounded font-mono font-bold text-[9px] bg-[#4338CA] text-white">
                                           Page {idx + 1}
@@ -2483,6 +2511,12 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
                                       <p className="font-semibold text-[#0F172A] truncate max-w-[150px] sm:max-w-xs md:max-w-md">
                                         {fileInfo.name}
                                       </p>
+                                      {isExtracted && (
+                                        <span className="px-1.5 py-0.2 rounded font-mono font-bold text-[9px] bg-teal-50 text-[#0D9488] border border-teal-200 flex items-center gap-1 shadow-2xs">
+                                          <CheckCircle2 className="w-2.5 h-2.5 text-[#0D9488]" />
+                                          <span>Extracted</span>
+                                        </span>
+                                      )}
                                     </div>
                                     <div className="flex items-center gap-1.5 text-[10px] text-slate-500 mt-0.5">
                                       <span
@@ -2522,15 +2556,20 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       setActiveSeparateFileIndex(idx);
+                                      setActiveExtractedQueueIds([fileInfo.id]);
                                       handleParseBill(idx);
                                     }}
                                     disabled={isParsing}
-                                    className="px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-[#4338CA] border border-indigo-200 text-[11px] font-bold flex items-center gap-1 transition-colors shadow-2xs disabled:opacity-50"
+                                    className={`px-2.5 py-1 rounded-lg border text-[11px] font-bold flex items-center gap-1 transition-colors shadow-2xs disabled:opacity-50 ${
+                                      isExtracted
+                                        ? 'bg-teal-50 hover:bg-teal-100 text-[#0D9488] border-teal-200'
+                                        : 'bg-indigo-50 hover:bg-indigo-100 text-[#4338CA] border border-indigo-200'
+                                    }`}
                                     title={clubAsSingleBill ? "Extract this page only" : "Extract this bill"}
                                   >
                                     <Sparkles className="w-3.5 h-3.5" />
                                     <span className="hidden sm:inline">
-                                      {clubAsSingleBill ? 'Extract This Page' : 'Extract This Bill'}
+                                      {isExtracted ? 'Re-extract' : (clubAsSingleBill ? 'Extract This Page' : 'Extract This Bill')}
                                     </span>
                                   </button>
 
@@ -2586,7 +2625,14 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
                       {/* Primary Extraction Button */}
                       <button
                         type="button"
-                        onClick={() => handleParseBill()}
+                        onClick={() => {
+                          const targetFiles =
+                            clubAsSingleBill || selectedFiles.length <= 1
+                              ? selectedFiles
+                              : [selectedFiles[Math.min(activeSeparateFileIndex, selectedFiles.length - 1)]];
+                          setActiveExtractedQueueIds(targetFiles.map((f) => f.id));
+                          handleParseBill();
+                        }}
                         disabled={isParsing || selectedFiles.length === 0}
                         className="w-full py-3.5 px-4 rounded-xl bg-[#4338CA] hover:bg-[#3730A3] text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all shadow-md hover:shadow-lg disabled:opacity-50"
                       >
@@ -4609,6 +4655,11 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
                         <div className="w-full h-full flex items-center justify-center text-slate-400">
                           <ImageIcon className="w-4 h-4" />
                         </div>
+                      )}
+                      {activeExtractedQueueIds.includes(f.id) && (
+                        <span className="absolute top-0 left-0 bg-[#0D9488] text-white font-mono font-bold text-[7px] px-1 rounded-br">
+                          Extracted
+                        </span>
                       )}
                       <span className="absolute bottom-0 inset-x-0 bg-[#0F172A]/80 text-white font-mono font-bold text-[8px] text-center">
                         P{fIdx + 1}
