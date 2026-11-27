@@ -1713,193 +1713,40 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
         </div>
       )}
 
-      {/* TWO-COLUMN WORKSPACE SPLIT (Jal Jeevan Purchase Hub layout) */}
-      <div className="flex flex-col md:flex-row items-start gap-6 w-full">
-        {/* Left Purchase Hub Sidebar (~240px) */}
-        <aside className="w-full md:w-60 lg:w-64 shrink-0 space-y-4">
-          <div className="p-4 rounded-2xl bg-white border border-slate-200 shadow-xs">
-            {/* Header Card */}
-            <div className="pb-3 border-b border-slate-100 mb-3">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-[#4338CA] shrink-0">
-                  <Receipt className="w-4 h-4" />
-                </div>
-                <div>
-                  <h3 className="text-xs font-bold text-[#0F172A] leading-tight">
-                    Purchase Hub
-                  </h3>
-                  <p className="text-[10px] text-slate-500 font-medium">
-                    Enterprise Inward & Sync
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Vertical Sub-Tabs */}
-            <nav className="space-y-1">
-              {/* 1. + Add New Purchase */}
-              <button
-                type="button"
-                onClick={() => setHubTab('new-purchase')}
-                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-left ${
-                  hubTab === 'new-purchase'
-                    ? 'bg-[#4338CA] text-white shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-                }`}
-              >
+      {/* FULL-WIDTH ACTIVE PURCHASE VIEW (Driven by App.tsx sidebar activeSubTab) */}
+      <div className="w-full space-y-6">
+        {hubTab === 'new-purchase' && (
+          <div className="space-y-6">
+            {/* TOP UPLOAD CARD: "Invoice Upload Drop-Zone & Mobile Camera Sync" */}
+            <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-4">
+              {/* Header */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
                 <div className="flex items-center gap-2">
-                  <Plus
-                    className={`w-3.5 h-3.5 ${
-                      hubTab === 'new-purchase' ? 'text-white' : 'text-[#4338CA]'
-                    }`}
-                  />
-                  <span>+ Add New Purchase</span>
-                </div>
-              </button>
-
-              {/* 2. Invoices Ledger */}
-              <button
-                type="button"
-                onClick={() => setHubTab('ledger')}
-                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-left ${
-                  hubTab === 'ledger'
-                    ? 'bg-[#4338CA] text-white shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <FileText
-                    className={`w-3.5 h-3.5 ${
-                      hubTab === 'ledger' ? 'text-white' : 'text-slate-500'
-                    }`}
-                  />
-                  <span>Invoices Ledger</span>
-                </div>
-                <span
-                  className={`text-[10px] font-mono px-2 py-0.5 rounded-full font-bold ${
-                    hubTab === 'ledger'
-                      ? 'bg-white/20 text-white'
-                      : 'bg-slate-100 text-slate-600 border border-slate-200'
-                  }`}
-                >
-                  {savedBills.length}
-                </span>
-              </button>
-
-              {/* 3. Item & Stock Master */}
-              <button
-                type="button"
-                onClick={onNavigateToProducts}
-                className="w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all text-left group"
-              >
-                <div className="flex items-center gap-2">
-                  <PackageCheck className="w-3.5 h-3.5 text-slate-500 group-hover:text-[#4338CA]" />
-                  <span>Item & Stock Master</span>
-                </div>
-                <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-teal-50 text-[#0D9488] border border-teal-200 font-mono">
-                  Live
-                </span>
-              </button>
-
-              {/* 4. Vendors Directory */}
-              <button
-                type="button"
-                onClick={() => setHubTab('vendors')}
-                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-left ${
-                  hubTab === 'vendors'
-                    ? 'bg-[#4338CA] text-white shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <Building2
-                    className={`w-3.5 h-3.5 ${
-                      hubTab === 'vendors' ? 'text-white' : 'text-slate-500'
-                    }`}
-                  />
-                  <span>Vendors Directory</span>
-                </div>
-                <span
-                  className={`text-[10px] font-mono px-2 py-0.5 rounded-full font-bold ${
-                    hubTab === 'vendors'
-                      ? 'bg-white/20 text-white'
-                      : 'bg-slate-100 text-slate-600 border border-slate-200'
-                  }`}
-                >
-                  {suppliersList.length}
-                </span>
-              </button>
-
-              {/* 5. Sale Return / Debit Note */}
-              <button
-                type="button"
-                onClick={() => setHubTab('debit-note')}
-                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-left ${
-                  hubTab === 'debit-note'
-                    ? 'bg-[#4338CA] text-white shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <RotateCcw
-                    className={`w-3.5 h-3.5 ${
-                      hubTab === 'debit-note' ? 'text-white' : 'text-slate-500'
-                    }`}
-                  />
-                  <span>Sale Return / Debit Note</span>
-                </div>
-                {debitNotes.length > 0 && (
-                  <span
-                    className={`text-[10px] font-mono px-2 py-0.5 rounded-full font-bold ${
-                      hubTab === 'debit-note'
-                        ? 'bg-white/20 text-white'
-                        : 'bg-slate-100 text-slate-600 border border-slate-200'
-                    }`}
-                  >
-                    {debitNotes.length}
-                  </span>
-                )}
-              </button>
-            </nav>
-
-            {/* Quick helper in sidebar */}
-            <div className="pt-3 mt-3 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={handleLoadSampleBill}
-                className="w-full px-2.5 py-2 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200 text-[11px] font-semibold transition-colors flex items-center justify-center gap-1.5 shadow-2xs"
-              >
-                <Sparkles className="w-3.5 h-3.5 text-[#4338CA]" />
-                <span>Load Sample Bill</span>
-              </button>
-            </div>
-          </div>
-        </aside>
-
-        {/* Right Main Content Area */}
-        <main className="flex-1 min-w-0 space-y-6">
-          {hubTab === 'new-purchase' && (
-            <div className="space-y-6">
-              {/* TOP UPLOAD CARD: "Invoice Upload Drop-Zone & Mobile Camera Sync" */}
-              <div className="p-5 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-4">
-                {/* Header */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-                  <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-[#4338CA] shrink-0">
-                      <ScanLine className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <h3 className="text-sm font-bold text-[#0F172A]">
-                        Invoice Upload Drop-Zone & Mobile Camera Sync
-                      </h3>
-                      <p className="text-[11px] text-slate-500">
-                        Scan phone camera stream or drop multi-page wholesale PDF invoices into Cloudflare R2
-                      </p>
-                    </div>
+                  <div className="w-8 h-8 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-[#4338CA] shrink-0">
+                    <ScanLine className="w-4 h-4" />
                   </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-[#0F172A]">
+                      Invoice Upload Drop-Zone & Mobile Camera Sync
+                    </h3>
+                    <p className="text-[11px] text-slate-500">
+                      Scan phone camera stream or drop multi-page wholesale PDF invoices into Cloudflare R2
+                    </p>
+                  </div>
+                </div>
 
-                  <div className="flex items-center gap-2">
-                    <div className="flex bg-slate-100 p-0.5 rounded-xl border border-slate-200 text-[11px]">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleLoadSampleBill}
+                    className="px-2.5 py-1.5 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-600 hover:text-slate-900 border border-slate-200 text-[11px] font-semibold transition-colors flex items-center gap-1.5 shadow-2xs"
+                    title="Load sample FMCG distributor bill"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-[#4338CA]" />
+                    <span className="hidden sm:inline">Load Sample Bill</span>
+                  </button>
+
+                  <div className="flex bg-slate-100 p-0.5 rounded-xl border border-slate-200 text-[11px]">
                       <button
                         type="button"
                         onClick={() => setInputMode('upload')}
@@ -3387,8 +3234,7 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
           )}
         </div>
       )}
-    </main>
-  </div>
+    </div>
 
   {/* ================= ISSUE DEBIT NOTE MODAL ================= */}
   {debitNoteModalOpen && (
