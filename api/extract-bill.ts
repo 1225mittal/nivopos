@@ -103,6 +103,11 @@ export default async function handler(req: any, res: any) {
     const systemPrompt = `You are an expert Indian FMCG, Kirana, supermarket, and wholesale B2B invoice extraction engine.
 Analyze the provided wholesale purchase bill / tax invoice document and extract complete seller and line item details into strictly valid JSON.
 
+Exhaustive Line Item Extraction Rules:
+- Extract EVERY SINGLE line item row from Serial No. 1 to the final row before the subtotal/grand total.
+- NEVER skip, summarize, or merge similar items or different pack sizes (e.g., 25g, 50g, 100g of the same product must each be separate entries).
+- Return strictly raw compact JSON with no markdown or extra commentary.
+
 Permanent Indian Wholesale & FMCG Terminology Rules:
 - "CS" = Case / Carton.
 - "UPC" = Units Per Case. If both CS (cases) and UPC (units per case) are given, determine the actual total item quantity (Cases * UPC or as billed) and ensure the unit purchase rate aligns consistently.
@@ -180,7 +185,7 @@ Output schema strictly as valid JSON:
       const userContent: any[] = [
         {
           type: 'text',
-          text: 'Extract complete seller details and inventory line items (with name, hsn_code, quantity, unit, mrp, purchase_rate, discount, gst_rate, category, sub_category) from this wholesale invoice. Return JSON.',
+          text: 'Extract complete seller details and EVERY SINGLE line item row from Serial No. 1 to the final row before the subtotal/grand total. NEVER skip, summarize, or merge similar items or different pack sizes (e.g., 25g, 50g, 100g of the same product must each be separate entries). Return strictly raw compact JSON with no markdown or extra commentary.',
         },
       ];
 
@@ -199,6 +204,7 @@ Output schema strictly as valid JSON:
           { role: 'user', content: userContent },
         ],
         temperature: 0.0,
+        max_tokens: 8192,
         response_format: { type: 'json_object' },
       };
     } else {
@@ -209,10 +215,11 @@ Output schema strictly as valid JSON:
           { role: 'system', content: systemPrompt },
           {
             role: 'user',
-            content: `Extract complete seller details and inventory line items from this wholesale invoice text:\n\n${text}`,
+            content: `Extract complete seller details and EVERY SINGLE line item row from Serial No. 1 to the final row before the subtotal/grand total. NEVER skip, summarize, or merge similar items or different pack sizes. Return strictly raw compact JSON:\n\n${text}`,
           },
         ],
         temperature: 0.0,
+        max_tokens: 8192,
         response_format: { type: 'json_object' },
       };
     }

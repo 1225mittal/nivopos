@@ -63,7 +63,7 @@ export const MobileBillScan: React.FC = () => {
     };
   }, []);
 
-  // Helper: Client-side compression to max 1400px at 0.78 JPEG quality
+  // Helper: Client-side compression to max 2200px at 0.85 JPEG quality
   const compressImage = async (file: File): Promise<File> => {
     return new Promise((resolve) => {
       const reader = new FileReader();
@@ -71,7 +71,7 @@ export const MobileBillScan: React.FC = () => {
         const img = new Image();
         img.onload = () => {
           let { width, height } = img;
-          const maxDimension = 1400;
+          const maxDimension = 2200;
 
           if (width > maxDimension || height > maxDimension) {
             if (width > height) {
@@ -108,7 +108,7 @@ export const MobileBillScan: React.FC = () => {
               resolve(compressedFile);
             },
             'image/jpeg',
-            0.78
+            0.85
           );
         };
         img.onerror = () => resolve(file);
@@ -133,14 +133,14 @@ export const MobileBillScan: React.FC = () => {
 
     setIsUploading(true);
     setErrorMessage(null);
-    setUploadStatus('Compressing photo (1400px)...');
+    setUploadStatus('Compressing photo (2200px)...');
 
     // Create a local preview for immediate visual feedback
     const localPreviewUrl = URL.createObjectURL(file);
     setLatestPreview(localPreviewUrl);
 
     try {
-      // 1. Compress image to max 1400px at 0.78 quality
+      // 1. Compress image to max 2200px at 0.85 quality
       const compressedFile = await compressImage(file);
 
       // 2. Upload directly to Cloudflare R2
