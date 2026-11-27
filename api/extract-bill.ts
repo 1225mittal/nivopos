@@ -27,6 +27,7 @@ export interface ExtractedBillItem {
   total_amount: number;
   barcode: string;
   selling_price: number | null;
+  bill_line_total: number;
 }
 
 export interface ExtractedBillResponse {
@@ -102,6 +103,12 @@ export default async function handler(req: any, res: any) {
     const systemPrompt = `You are an expert Indian FMCG, Kirana, supermarket, and wholesale B2B invoice extraction engine.
 Analyze the provided wholesale purchase bill / tax invoice document and extract complete seller and line item details into strictly valid JSON.
 
+Permanent Indian Wholesale & FMCG Terminology Rules:
+- "CS" = Case / Carton.
+- "UPC" = Units Per Case. If both CS (cases) and UPC (units per case) are given, determine the actual total item quantity (Cases * UPC or as billed) and ensure the unit purchase rate aligns consistently.
+- "Pcs", "Pieces", and "Qty" mean the same thing: item quantity.
+- "Rate", "Price", and "Basic Rate" mean the same thing: unit purchase rate before tax.
+
 Extract top-level seller details:
 - "seller_name": Issuer / distributor / seller company name (NOT the customer or consignee).
 - "gstin": 15-character GSTIN of the seller (e.g. "27AABCM9876Q1Z8"). Return "" if not printed.
@@ -116,10 +123,11 @@ Extract every product line item in "items":
 - "name": Full brand and product name (e.g. "Fortune Sunlite Refined Sunflower Oil 1L Pouch", "Amul Butter 500g", "Tata Salt 1kg", "Surf Excel Easy Wash 1kg").
 - "hsn_code": 4 to 8 digit HSN/SAC code printed in the invoice row or HSN summary table (e.g. "0405", "1512", "1905", "2106", "3306"). Return "" if not printed.
 - "quantity": Numeric quantity purchased (e.g. 10, 24, 50). Minimum 1.
-- "unit": Unit of measurement (e.g. "pcs", "kg", "pack", "box", "ltr", "gm", "pouch", "bottle", "tin"). Default "pcs".
+- "unit": Unit of measurement (e.g. "pcs", "kg", "pack", "box", "ltr", "gm", "pouch", "bottle", "tin", "cs"). Default "pcs".
 - "mrp": Numeric Maximum Retail Price (MRP) printed on the bill in an MRP column. If NO explicit MRP column or printed MRP exists, return null.
 - "purchase_rate": Unit landing rate / purchase rate before GST (numeric).
-- "discount": Discount on this item (flat amount or 0).
+- "discount": Discount on this line item in ₹ (flat amount or 0). If given as %, calculate the ₹ discount or extract given discount amount. Default 0.
+- "bill_line_total": The exact printed line total / net amount for this item row as printed on the invoice.
 - "gst_rate": Combined GST percentage (CGST + SGST or IGST %, e.g. 0, 5, 12, 18, 28).
 - "category": Inferred FMCG / Kirana category:
   - "Groceries & Staples" (e.g. Atta, Rice, Dal, Pulses, Spices, Sugar, Salt)
@@ -153,6 +161,7 @@ Output schema strictly as valid JSON:
       "mrp": null,
       "purchase_rate": 0.0,
       "discount": 0.0,
+      "bill_line_total": 0.0,
       "gst_rate": 0,
       "category": "...",
       "sub_category": "...",
@@ -303,6 +312,17 @@ Output schema strictly as valid JSON:
       const roundedAfterTax = Math.round(priceAfterTax * 100) / 100;
       const roundedAmount = Math.round(amount * 100) / 100;
 
+      const rawBillTotal =
+        rawItem.bill_line_total !== undefined &&
+        rawItem.bill_line_total !== null &&
+        rawItem.bill_line_total !== '' &&
+        !isNaN(Number(rawItem.bill_line_total))
+          ? Number(rawItem.bill_line_total)
+          : NaN;
+      const billLineTotal = !isNaN(rawBillTotal)
+        ? Math.round(rawBillTotal * 100) / 100
+        : roundedAmount;
+
       return {
         name,
         item_name: name,
@@ -323,6 +343,7 @@ Output schema strictly as valid JSON:
         total_amount: roundedAmount,
         barcode,
         selling_price: mrp,
+        bill_line_total: billLineTotal,
       };
     });
 
