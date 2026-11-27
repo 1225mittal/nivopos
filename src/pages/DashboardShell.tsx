@@ -32,6 +32,10 @@ export interface DashboardShellProps {
   onRefreshProfile?: () => Promise<void>;
   initialTab?: ActiveTab;
   initialPurchaseSubTab?: PurchaseSubTab;
+  activeTab?: ActiveTab;
+  onTabChange?: (tab: ActiveTab) => void;
+  activePurchaseSubTab?: PurchaseSubTab;
+  onPurchaseSubTabChange?: (subTab: PurchaseSubTab) => void;
 }
 
 export const DashboardShell: React.FC<DashboardShellProps> = ({
@@ -40,17 +44,73 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
   onSignOut,
   initialTab = 'pos',
   initialPurchaseSubTab = 'new',
+  activeTab: controlledActiveTab,
+  onTabChange,
+  activePurchaseSubTab: controlledPurchaseSubTab,
+  onPurchaseSubTabChange,
 }) => {
-  const [activeTab, setActiveTab] = useState<ActiveTab>(initialTab);
-  const [activePurchaseSubTab, setActivePurchaseSubTab] = useState<PurchaseSubTab>(initialPurchaseSubTab);
-  const [isPurchaseExpanded, setIsPurchaseExpanded] = useState<boolean>(initialTab === 'purchase-bills');
+  const getStoredActiveTab = (): ActiveTab => {
+    try {
+      const stored = localStorage.getItem('nivopos_active_tab');
+      if (stored && ['pos', 'products', 'purchase-bills', 'purchases', 'sales', 'settings'].includes(stored)) {
+        return stored as ActiveTab;
+      }
+    } catch {}
+    return controlledActiveTab || initialTab;
+  };
+
+  const getStoredPurchaseSubTab = (): PurchaseSubTab => {
+    try {
+      const stored = localStorage.getItem('nivopos_purchase_subtab');
+      if (stored && ['new', 'ledger', 'vendors', 'returns'].includes(stored)) {
+        return stored as PurchaseSubTab;
+      }
+    } catch {}
+    return controlledPurchaseSubTab || initialPurchaseSubTab;
+  };
+
+  const [internalActiveTab, setInternalActiveTab] = useState<ActiveTab>(getStoredActiveTab);
+  const [internalPurchaseSubTab, setInternalPurchaseSubTab] = useState<PurchaseSubTab>(getStoredPurchaseSubTab);
+
+  const activeTab = controlledActiveTab !== undefined ? controlledActiveTab : internalActiveTab;
+  const activePurchaseSubTab = controlledPurchaseSubTab !== undefined ? controlledPurchaseSubTab : internalPurchaseSubTab;
+
+  const setActiveTab = (tab: ActiveTab) => {
+    setInternalActiveTab(tab);
+    onTabChange?.(tab);
+    try {
+      localStorage.setItem('nivopos_active_tab', tab);
+    } catch {}
+  };
+
+  const setActivePurchaseSubTab = (subTab: PurchaseSubTab) => {
+    setInternalPurchaseSubTab(subTab);
+    onPurchaseSubTabChange?.(subTab);
+    try {
+      localStorage.setItem('nivopos_purchase_subtab', subTab);
+    } catch {}
+  };
+
+  const isPurchaseTab = (tab: string) => tab === 'purchases' || tab === 'purchase-bills';
+  const isPurchaseActive = isPurchaseTab(activeTab);
+
+  // If the restored activeTab is 'purchases' (or 'purchase-bills'), keep the Purchase Bills dropdown expanded on reload
+  const [isPurchaseExpanded, setIsPurchaseExpanded] = useState<boolean>(() => {
+    try {
+      const stored = localStorage.getItem('nivopos_active_tab') || controlledActiveTab || initialTab;
+      return isPurchaseTab(stored);
+    } catch {
+      return isPurchaseTab(controlledActiveTab || initialTab);
+    }
+  });
+
   const [isSidebarOpen, setIsSidebarOpen] = useState<boolean>(true);
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState<boolean>(false);
   const [editedProfile, setEditedProfile] = useState<StoreProfile | null>(null);
 
-  // Auto-expand purchase accordion when activeTab becomes 'purchase-bills'
+  // Auto-expand purchase accordion when activeTab becomes 'purchases' or 'purchase-bills'
   useEffect(() => {
-    if (activeTab === 'purchase-bills') {
+    if (isPurchaseTab(activeTab)) {
       setIsPurchaseExpanded(true);
     }
   }, [activeTab]);
@@ -89,7 +149,7 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
   }, []);
 
   const handlePurchaseSubTabSelect = (subTab: PurchaseSubTab) => {
-    setActiveTab('purchase-bills');
+    setActiveTab('purchases');
     setActivePurchaseSubTab(subTab);
     setIsPurchaseExpanded(true);
     setIsMobileDrawerOpen(false);
@@ -234,15 +294,15 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  if (activeTab !== 'purchase-bills') {
-                    setActiveTab('purchase-bills');
+                  if (!isPurchaseActive) {
+                    setActiveTab('purchases');
                     setIsPurchaseExpanded(true);
                   } else {
                     setIsPurchaseExpanded((prev) => !prev);
                   }
                 }}
                 className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-all text-left ${
-                  activeTab === 'purchase-bills'
+                  isPurchaseActive
                     ? 'bg-indigo-50 text-[#4338CA] border border-indigo-100/80 shadow-xs'
                     : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
                 }`}
@@ -266,7 +326,7 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
                     type="button"
                     onClick={() => handlePurchaseSubTabSelect('new')}
                     className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all text-left ${
-                      activeTab === 'purchase-bills' && activePurchaseSubTab === 'new'
+                      isPurchaseActive && activePurchaseSubTab === 'new'
                         ? 'bg-[#4338CA] text-white shadow-xs font-bold'
                         : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
                     }`}
@@ -280,7 +340,7 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
                     type="button"
                     onClick={() => handlePurchaseSubTabSelect('ledger')}
                     className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all text-left ${
-                      activeTab === 'purchase-bills' && activePurchaseSubTab === 'ledger'
+                      isPurchaseActive && activePurchaseSubTab === 'ledger'
                         ? 'bg-[#4338CA] text-white shadow-xs font-bold'
                         : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
                     }`}
@@ -294,7 +354,7 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
                     type="button"
                     onClick={() => handlePurchaseSubTabSelect('vendors')}
                     className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all text-left ${
-                      activeTab === 'purchase-bills' && activePurchaseSubTab === 'vendors'
+                      isPurchaseActive && activePurchaseSubTab === 'vendors'
                         ? 'bg-[#4338CA] text-white shadow-xs font-bold'
                         : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
                     }`}
@@ -308,7 +368,7 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
                     type="button"
                     onClick={() => handlePurchaseSubTabSelect('returns')}
                     className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition-all text-left ${
-                      activeTab === 'purchase-bills' && activePurchaseSubTab === 'returns'
+                      isPurchaseActive && activePurchaseSubTab === 'returns'
                         ? 'bg-[#4338CA] text-white shadow-xs font-bold'
                         : 'text-slate-600 hover:text-slate-900 hover:bg-slate-50'
                     }`}
@@ -387,7 +447,7 @@ export const DashboardShell: React.FC<DashboardShellProps> = ({
             />
           )}
 
-          {activeTab === 'purchase-bills' && (
+          {isPurchaseActive && (
             <PurchaseBills
               currentUser={currentUser}
               userProfile={activeProfile}

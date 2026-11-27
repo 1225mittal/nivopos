@@ -136,27 +136,27 @@ export interface SubscriptionPayment {
 
 export type AuthMode = 'signin' | 'signup';
 export type AuthMethod = 'phone' | 'email';
-export type ActiveTab = 'pos' | 'products' | 'purchase-bills' | 'sales' | 'settings';
+export type ActiveTab = 'pos' | 'products' | 'purchase-bills' | 'purchases' | 'sales' | 'settings';
 
 export interface PurchaseBillItem {
   id?: string;
   name: string;
-  qty: number;
+  qty: number | string;
   unit: string;
-  purchase_price: number;
-  selling_price?: number | null;
-  gst_rate: number;
-  total_amount: number;
+  purchase_price: number | string;
+  selling_price?: number | string | null;
+  gst_rate: number | string;
+  total_amount: number | string;
   // Groq OCR enriched fields
   item_name?: string;
   hsn_code?: string;
-  mrp?: number | null;
-  purchase_rate?: number;
-  discount?: number;
-  price_without_tax?: number;
-  price_after_tax?: number;
-  quantity?: number;
-  amount?: number;
+  mrp?: number | string | null;
+  purchase_rate?: number | string;
+  discount?: number | string;
+  price_without_tax?: number | string;
+  price_after_tax?: number | string;
+  quantity?: number | string;
+  amount?: number | string;
   barcode?: string;
   image_url?: string;
   category?: string;
