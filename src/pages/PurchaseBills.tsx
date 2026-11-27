@@ -157,6 +157,8 @@ interface PurchaseBillsProps {
   currentUser: any;
   userProfile: StoreProfile | null;
   onNavigateToProducts: () => void;
+  activeSubTab?: 'new' | 'new-purchase' | 'ledger' | 'vendors' | 'returns' | 'debit-note' | string;
+  onSelectSubTab?: (tab: string) => void;
 }
 
 // Format file size nicely
@@ -212,6 +214,8 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
   currentUser,
   userProfile,
   onNavigateToProducts,
+  activeSubTab,
+  onSelectSubTab,
 }) => {
   // Mode: File Upload vs Raw Text Input
   const [inputMode, setInputMode] = useState<'upload' | 'text'>('upload');
@@ -276,7 +280,38 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
 
   // Purchase Hub Sub-tabs: 'new-purchase' | 'ledger' | 'vendors' | 'debit-note'
   type PurchaseHubTab = 'new-purchase' | 'ledger' | 'vendors' | 'debit-note';
-  const [hubTab, setHubTab] = useState<PurchaseHubTab>('new-purchase');
+  const [hubTab, _setHubTab] = useState<PurchaseHubTab>(() => {
+    if (activeSubTab === 'ledger') return 'ledger';
+    if (activeSubTab === 'vendors') return 'vendors';
+    if (activeSubTab === 'returns' || activeSubTab === 'debit-note') return 'debit-note';
+    return 'new-purchase';
+  });
+
+  const setHubTab = useCallback(
+    (tab: PurchaseHubTab) => {
+      _setHubTab(tab);
+      if (onSelectSubTab) {
+        const mapped =
+          tab === 'new-purchase' ? 'new' : tab === 'debit-note' ? 'returns' : tab;
+        onSelectSubTab(mapped);
+      }
+    },
+    [onSelectSubTab]
+  );
+
+  // Sync internal sub-tab when parent passes or updates activeSubTab
+  useEffect(() => {
+    if (!activeSubTab) return;
+    if (activeSubTab === 'new' || activeSubTab === 'new-purchase') {
+      _setHubTab('new-purchase');
+    } else if (activeSubTab === 'ledger') {
+      _setHubTab('ledger');
+    } else if (activeSubTab === 'vendors') {
+      _setHubTab('vendors');
+    } else if (activeSubTab === 'returns' || activeSubTab === 'debit-note') {
+      _setHubTab('debit-note');
+    }
+  }, [activeSubTab]);
 
   // Suppliers Directory State
   const [suppliersList, setSuppliersList] = useState<Supplier[]>([]);

@@ -398,3 +398,4 @@ export function App() {
 }
 
 export default App;
+export { DashboardShell } from './pages/DashboardShell';
