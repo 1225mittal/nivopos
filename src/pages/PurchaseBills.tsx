@@ -275,9 +275,9 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
   const [viewerRotation, setViewerRotation] = useState<number>(0);
   const [activeViewerDocIndex, setActiveViewerDocIndex] = useState<number>(0);
 
-  // Phone QR Scan Modal State
+  // Phone QR Scan Modal State - Persistent session across entire Purchase Bills page lifetime
   const [phoneQrModalOpen, setPhoneQrModalOpen] = useState(false);
-  const [phoneQrSessionId, setPhoneQrSessionId] = useState<string>('');
+  const [phoneQrSessionId] = useState<string>(() => crypto.randomUUID());
   const [phoneQrUrl, setPhoneQrUrl] = useState<string>('');
   const [isReceivingFromPhone, setIsReceivingFromPhone] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
@@ -383,34 +383,17 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
     }
   }, []);
 
-  const handleClosePhoneQrModal = () => {
-    setPhoneQrModalOpen(false);
-    setIsReceivingFromPhone(false);
-    setCopiedLink(false);
-    cleanupPhoneQrChannel();
-  };
-
+  // Keep Supabase Realtime channel subscribed for the entire lifetime of the Purchase Bills page
   useEffect(() => {
-    return () => {
-      cleanupPhoneQrChannel();
-    };
-  }, [cleanupPhoneQrChannel]);
+    if (!phoneQrSessionId) return;
 
-  const handleOpenPhoneQrModal = () => {
-    const sessionId = crypto.randomUUID();
+    // Pre-populate scan URL
     const storeId = currentUser?.id || '';
-    const scanUrl = `${window.location.origin}/mobile-scan?session=${sessionId}&store=${storeId}`;
+    if (typeof window !== 'undefined') {
+      setPhoneQrUrl(`${window.location.origin}/mobile-scan?session=${phoneQrSessionId}&store=${storeId}`);
+    }
 
-    setPhoneQrSessionId(sessionId);
-    setPhoneQrUrl(scanUrl);
-    setPhoneQrModalOpen(true);
-    setIsReceivingFromPhone(false);
-    setCopiedLink(false);
-    setReceivedPhoneCount(0);
-
-    cleanupPhoneQrChannel();
-
-    const channel = supabase.channel(`bill-scan-${sessionId}`);
+    const channel = supabase.channel(`bill-scan-${phoneQrSessionId}`);
     channel
       .on('broadcast', { event: 'files-uploaded' }, async ({ payload }) => {
         if (!payload?.files || !Array.isArray(payload.files) || payload.files.length === 0) return;
@@ -421,11 +404,13 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
           try {
             const res = await fetch(item.publicUrl);
             const blob = await res.blob();
-            const file = new File([blob], item.name, {
+            const uniqueId = crypto.randomUUID();
+            const itemName = item.name || `bill-${Date.now()}-${Math.random().toString(36).slice(2, 6)}.jpg`;
+            const file = new File([blob], itemName, {
               type: item.type || blob.type || 'image/jpeg',
             });
             const isPdf =
-              item.type === 'application/pdf' || item.name.toLowerCase().endsWith('.pdf');
+              item.type === 'application/pdf' || itemName.toLowerCase().endsWith('.pdf');
 
             let previewUrl: string | undefined = undefined;
             if (!isPdf) {
@@ -434,8 +419,8 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
 
             incomingFiles.push({
               file,
-              id: crypto.randomUUID(),
-              name: item.name,
+              id: uniqueId,
+              name: itemName,
               size: file.size,
               type: isPdf ? 'pdf' : 'image',
               previewUrl,
@@ -448,32 +433,43 @@ export const PurchaseBills: React.FC<PurchaseBillsProps> = ({
         }
 
         if (incomingFiles.length > 0) {
-          setSelectedFiles((prev) => {
-            const existingKeys = new Set(prev.map((f) => f.r2FileKey || `${f.name}-${f.size}`));
-            const deduplicated = incomingFiles.filter(
-              (f) => !existingKeys.has(f.r2FileKey || `${f.name}-${f.size}`)
-            );
-            if (deduplicated.length > 0) {
-              setReceivedPhoneCount((c) => c + deduplicated.length);
-            }
-            return [...prev, ...deduplicated];
-          });
-
+          // Functional state update appending every incoming photo with unique id, NEVER deduplicating by fileName
+          setSelectedFiles((prev) => [...prev, ...incomingFiles]);
+          setReceivedPhoneCount((c) => c + incomingFiles.length);
           setInputMode('upload');
           setFeedback({
             type: 'success',
-            message: `Received ${incomingFiles.length} snap${
+            message: `Received ${incomingFiles.length} photo${
               incomingFiles.length > 1 ? 's' : ''
             } from phone! Added to queue.`,
           });
         }
 
         setIsReceivingFromPhone(false);
-        // Do not close the modal here: keep the Realtime channel active until the user clicks Done/Close!
       })
-      .subscribe();
+      .subscribe((status) => {
+        console.log(`[PurchaseBills] Realtime channel bill-scan-${phoneQrSessionId} status:`, status);
+      });
 
     phoneQrChannelRef.current = channel;
+
+    return () => {
+      cleanupPhoneQrChannel();
+    };
+  }, [phoneQrSessionId, currentUser?.id, cleanupPhoneQrChannel]);
+
+  const handleClosePhoneQrModal = () => {
+    setPhoneQrModalOpen(false);
+    setIsReceivingFromPhone(false);
+    setCopiedLink(false);
+    // Do NOT unsubscribe here: keep Realtime channel active for the page lifetime so subsequent snaps appear!
+  };
+
+  const handleOpenPhoneQrModal = () => {
+    const storeId = currentUser?.id || '';
+    setPhoneQrUrl(`${window.location.origin}/mobile-scan?session=${phoneQrSessionId}&store=${storeId}`);
+    setPhoneQrModalOpen(true);
+    setCopiedLink(false);
   };
 
   // Fetch store products to dynamically discover any existing custom categories

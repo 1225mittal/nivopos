@@ -63,7 +63,7 @@ export const MobileBillScan: React.FC = () => {
     };
   }, []);
 
-  // Helper: Client-side compression to max 2200px at 0.85 JPEG quality
+  // Helper: Client-side compression to max 2200px at 0.85 JPEG quality with unique filename
   const compressImage = async (file: File): Promise<File> => {
     return new Promise((resolve) => {
       const reader = new FileReader();
@@ -101,8 +101,9 @@ export const MobileBillScan: React.FC = () => {
                 resolve(file);
                 return;
               }
-              const cleanBaseName = file.name.replace(/\.[^/.]+$/, '');
-              const compressedFile = new File([blob], `${cleanBaseName || 'bill-page'}.jpg`, {
+              // Generate unique filename per capture so Page 2 never overwrites Page 1 on Cloudflare R2
+              const uniqueFileName = `bill-${Date.now()}-${Math.random().toString(36).slice(2, 6)}.jpg`;
+              const compressedFile = new File([blob], uniqueFileName, {
                 type: 'image/jpeg',
               });
               resolve(compressedFile);
@@ -119,10 +120,57 @@ export const MobileBillScan: React.FC = () => {
     });
   };
 
+  // Helper: Ensure Realtime channel is joined even if mobile camera suspended the WebSocket
+  const ensureChannelJoined = async (sId: string): Promise<any> => {
+    let channel = realtimeChannelRef.current;
+    if (channel && channel.state === 'joined') {
+      return channel;
+    }
+
+    console.log(`[MobileScan] Channel state is "${channel?.state || 'null'}". Re-subscribing to bill-scan-${sId}...`);
+    if (channel) {
+      try {
+        await supabase.removeChannel(channel);
+      } catch (err) {
+        console.warn('[MobileScan] Error removing stale channel:', err);
+      }
+    }
+
+    const newChannel = supabase.channel(`bill-scan-${sId}`);
+    realtimeChannelRef.current = newChannel;
+
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        console.warn('[MobileScan] Re-subscription timeout (6s); proceeding with channel');
+        resolve(newChannel);
+      }, 6000);
+
+      newChannel.subscribe((status, err) => {
+        if (status === 'SUBSCRIBED') {
+          clearTimeout(timer);
+          setIsConnected(true);
+          console.log('[MobileScan] Successfully re-subscribed & joined channel');
+          resolve(newChannel);
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          clearTimeout(timer);
+          console.error('[MobileScan] Subscription error:', status, err);
+          resolve(newChannel);
+        }
+      });
+    });
+  };
+
   // 2. Handle instant capture & upload
   const handleCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    e.target.value = ''; // Reset input so subsequent snaps re-fire onChange
+
+    // Immediately reset input value so taking a second photo always fires onChange
+    if (cameraInputRef.current) {
+      cameraInputRef.current.value = '';
+    }
+    if (e.target) {
+      e.target.value = '';
+    }
 
     if (!file) return;
 
@@ -140,7 +188,7 @@ export const MobileBillScan: React.FC = () => {
     setLatestPreview(localPreviewUrl);
 
     try {
-      // 1. Compress image to max 2200px at 0.85 quality
+      // 1. Compress image to max 2200px at 0.85 quality with unique filename
       const compressedFile = await compressImage(file);
 
       // 2. Upload directly to Cloudflare R2
@@ -151,14 +199,9 @@ export const MobileBillScan: React.FC = () => {
         folder: 'purchases',
       });
 
-      // 3. Broadcast to desktop on bill-scan-${sessionId}
+      // 3. Ensure channel is in 'joined' state before broadcasting (in case mobile camera suspended WebSocket)
       setUploadStatus('Syncing with desktop screen...');
-      let channel = realtimeChannelRef.current;
-      if (!channel) {
-        channel = supabase.channel(`bill-scan-${sessionId}`);
-        realtimeChannelRef.current = channel;
-        await channel.subscribe();
-      }
+      const activeChannel = await ensureChannelJoined(sessionId);
 
       const newPageNumber = uploadedCount + 1;
       const uploadedItem: UploadedFileItem = {
@@ -169,7 +212,7 @@ export const MobileBillScan: React.FC = () => {
         pageNumber: newPageNumber,
       };
 
-      await channel.send({
+      await activeChannel.send({
         type: 'broadcast',
         event: 'files-uploaded',
         payload: {
@@ -186,6 +229,10 @@ export const MobileBillScan: React.FC = () => {
       setErrorMessage(err?.message || 'Upload failed. Please check connection and try again.');
       setUploadStatus('');
     } finally {
+      // Ensure input value is cleared again in finally block
+      if (cameraInputRef.current) {
+        cameraInputRef.current.value = '';
+      }
       setIsUploading(false);
     }
   };
